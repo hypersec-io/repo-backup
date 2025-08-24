@@ -1,5 +1,7 @@
 # repo-backup
 
+Enterprise repository backup tool for GitHub, GitLab, and Bitbucket
+
 [![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
