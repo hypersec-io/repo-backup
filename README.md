@@ -49,25 +49,63 @@ uv sync
 uv run repo-backup local /tmp/test-backup --test
 ```
 
-## Configuration
+## Initial Setup
 
-1. Copy the example configuration:
+### Step 1: S3 Bucket Setup (For S3 Backups)
+
+If you plan to use S3 for backups, create and configure the bucket first:
+
+```bash
+# Basic setup (Standard storage only)
+repo-backup s3 --setup
+
+# With Glacier for cost-optimized long-term storage
+repo-backup s3 --setup --enable-glacier
+
+# Custom bucket name and region
+repo-backup s3 --setup --bucket-name my-backup-bucket --region us-east-1
+```
+
+This automated setup will:
+- ✅ Create S3 bucket with unique name (or use your custom name)
+- ✅ Enable versioning for backup history
+- ✅ Configure encryption (AES256)
+- ✅ Block all public access
+- ✅ Set up lifecycle policies (Standard or with Glacier)
+- ✅ Create dedicated IAM user with minimal permissions
+- ✅ Configure AWS CLI profile
+- ✅ Generate `.env` file with all settings
+- ✅ Test bucket access and permissions
+
+**After setup completes:**
+- Note the bucket name, IAM user, and AWS profile displayed
+- The `.env` file will be created with S3 configuration
+- Add your Git platform tokens to the `.env` file (see below)
+
+### Step 2: Configure Access Tokens
+
+1. Copy the example configuration (if S3 setup didn't create one):
 ```bash
 cp .env.example .env
 ```
 
-2. Edit `.env` with your credentials and preferences:
+2. Edit `.env` with your credentials:
 ```bash
-# Required: Platform tokens
+# Git Platform Tokens (REQUIRED)
 GITHUB_TOKEN=ghp_your_token_here
 GITLAB_TOKEN=glpat_your_token_here  
-BITBUCKET_TOKEN=ATCTT_your_token_here
+BITBUCKET_TOKEN=your-username:app-password  # For Bitbucket Cloud
+# BITBUCKET_TOKEN=your-pat-token  # For Bitbucket Server
 
-# Required: Backup destination
-LOCAL_BACKUP_PATH=/mnt/backups/repo-backup
-AWS_S3_BUCKET=your-backup-bucket
+# Backup Destinations (choose one or both)
+LOCAL_BACKUP_PATH=/mnt/backups/repo-backup  # For local backups
+AWS_S3_BUCKET=repo-backup-123456789  # Auto-filled by S3 setup
 
-# Optional: Advanced settings
+# AWS Configuration (auto-filled by S3 setup)
+AWS_PROFILE=repo-backup-repo-backup-123456789
+AWS_REGION=us-west-2
+
+# Optional: Performance settings
 PARALLEL_WORKERS=5
 BACKUP_METHOD=direct  # or 'archive'
 ```
@@ -75,61 +113,146 @@ BACKUP_METHOD=direct  # or 'archive'
 ### Getting Access Tokens
 
 #### GitHub
-1. Go to Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. Generate new token with `repo` scope
-3. Copy the token (starts with `ghp_`)
+1. Navigate to: **Settings → Developer settings → Personal access tokens → Tokens (classic)**
+   - Direct URL: https://github.com/settings/tokens
+2. Click **Generate new token → Generate new token (classic)**
+3. Set expiration (recommend: 90 days for security)
+4. Select scopes:
+   - ✅ `repo` (Full control of private repositories)
+   - Optional: `read:org` if backing up organization repos
+5. Click **Generate token**
+6. Copy immediately - token starts with `ghp_`
+7. Store securely - you won't see it again!
 
 #### GitLab
-1. Go to User Settings → Access Tokens
-2. Create token with `read_repository` scope
-3. Copy the token (starts with `glpat-`)
+1. Navigate to: **User Settings → Access Tokens**
+   - Direct URL: https://gitlab.com/-/profile/personal_access_tokens
+2. Fill in token details:
+   - Token name: `repo-backup`
+   - Expiration date: Set as needed
+3. Select scopes:
+   - ✅ `read_repository`
+   - ✅ `read_api` (for group/project listing)
+4. Click **Create personal access token**
+5. Copy the token - starts with `glpat-`
 
 #### Bitbucket
-**Cloud:**
-1. Go to Personal settings → App passwords
-2. Create app password with repository read permissions
-3. Use your username and app password
 
-**Server/Data Center:**
-1. Go to Profile → Manage account → Personal access tokens
-2. Create token with repository read permissions
+**Bitbucket Cloud (bitbucket.org):**
+1. Navigate to: **Personal settings → App passwords**
+   - Direct URL: https://bitbucket.org/account/settings/app-passwords/
+2. Click **Create app password**
+3. Label: `repo-backup`
+4. Select permissions:
+   - Account: ✅ Read
+   - Workspace membership: ✅ Read
+   - Projects: ✅ Read
+   - Repositories: ✅ Read
+   - Pull requests: ✅ Read (optional)
+5. Click **Create**
+6. Copy the password immediately
+7. In `.env` file use:
+   ```bash
+   BITBUCKET_USERNAME=your-username
+   BITBUCKET_APP_PASSWORD=the-app-password
+   # For clone URLs
+   BITBUCKET_TOKEN=your-username:app-password
+   ```
+
+**Bitbucket Server/Data Center (self-hosted):**
+1. Navigate to: **Profile picture → Manage account → Personal access tokens**
+   - URL: `https://your-bitbucket-server/plugins/servlet/access-tokens/manage`
+2. Click **Create a token**
+3. Token details:
+   - Token name: `repo-backup`
+   - Expiry: As needed
+4. Permissions:
+   - Repository: ✅ Read
+   - Project: ✅ Read
+5. Click **Create**
+6. Copy the HTTP access token
+7. In `.env` file:
+   ```bash
+   BITBUCKET_SERVER_URL=https://your-bitbucket-server
+   BITBUCKET_TOKEN=your-token
+   ```
+
+**Important Notes:**
+- Bitbucket Cloud uses **app passwords** (not tokens like GitHub/GitLab)
+- The app password must be combined with your username for authentication
+- For Bitbucket Server, use the token directly
+- All tokens should have **read-only** permissions for security
 
 ## Usage
 
-### Basic Backup
+### Basic Backup Commands
 
-Run backup for all configured platforms:
 ```bash
-python backup_repos.py
+# Local backup to filesystem
+repo-backup local /path/to/backup/directory
+
+# S3 backup (bucket must be configured first)
+repo-backup s3
+
+# Both local and S3
+repo-backup both /path/to/local/backup
 ```
 
-### With Custom Config
+### Filtering Options
 
 ```bash
-python backup_repos.py --config /path/to/config.yaml
+# Backup only specific platforms
+repo-backup local /backup/dir --platform github
+repo-backup local /backup/dir --platform gitlab,bitbucket
+
+# Backup specific repositories
+repo-backup local /backup/dir --repos owner/repo1,owner/repo2
+
+# Use pattern matching
+repo-backup local /backup/dir --pattern "frontend-*"
+repo-backup local /backup/dir --pattern-type regex --pattern ".*-service$"
+
+# Exclude forks and personal repos (default behavior)
+repo-backup local /backup/dir --include-forks  # To include forks
 ```
 
 ### List Existing Backups
 
 ```bash
-# List all backups
-python backup_repos.py --list
+# List all local backups
+repo-backup local /backup/dir --list
+
+# List S3 backups
+repo-backup s3 --list
 
 # List backups from specific platform
-python backup_repos.py --list --platform github
+repo-backup local /backup/dir --list --platform github
 ```
 
 ### Advanced Options
 
 ```bash
-# Disable parallel processing
-python backup_repos.py --parallel false
+# Control parallel processing
+repo-backup local /backup/dir --workers 10  # Set worker count
+repo-backup local /backup/dir --workers 1   # Disable parallel processing
 
-# Set number of parallel workers
-python backup_repos.py --workers 10
+# Test mode - backup only smallest repo
+repo-backup local /backup/dir --test
+repo-backup s3 --test
 
-# Enable verbose logging
-python backup_repos.py --verbose
+# Archive format instead of bundles
+repo-backup local /backup/dir --archive
+
+# Force re-backup even if unchanged
+repo-backup local /backup/dir --force
+
+# Verbose logging
+repo-backup local /backup/dir --verbose
+
+# Diagnostic commands
+repo-backup --health-check           # Test platform connectivity
+repo-backup --validate-config        # Verify configuration
+repo-backup --verify-backup /path    # Check backup integrity
 ```
 
 ## How It Works
