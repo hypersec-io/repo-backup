@@ -1,10 +1,17 @@
-# Claude Code Universal Configuration
+# Universal CLAUDE.md Template for All Projects
+
+Copy everything below this line into your project's CLAUDE.md file:
+
+---
+
+# Claude Code Configuration
 
 ## MANDATORY: Recency and Currency Requirements
 
-**THIS SECTION MUST BE IN ALL PROJECT CLAUDE.MD FILES**
+**⚠️ CRITICAL: This project requires bleeding-edge, up-to-date knowledge**
 
-### Critical Instructions for Claude
+### Core Requirements for Claude
+
 1. **ALWAYS check current date first** - Use the actual current year, not 2024 or 2023
 2. **ALWAYS verify current information** via WebSearch before providing:
    - Platform UI instructions (GitHub, GitLab, AWS, etc.)
@@ -31,12 +38,12 @@
    - Verify compatibility with current ecosystem
    - Don't assume old patterns still work
 
-### Example Search Patterns
-Instead of generic searches, use:
-- "GitHub personal access token August 2025 latest steps"
-- "AWS S3 bucket policy 2025 current best practices"
-- "Python uv package manager August 2025 features"
-- "Bitbucket API authentication 2025 deprecation app password"
+### Search Pattern Requirements
+Instead of generic searches, ALWAYS use dated searches:
+- "GitHub personal access token {current_month} {current_year} latest steps"
+- "AWS S3 bucket policy {current_year} current best practices"
+- "{package_name} {current_month} {current_year} latest version features"
+- "{platform} API authentication {current_year} deprecation changes"
 
 ### Why This Matters
 - Out-of-date guidance wastes engineering time
@@ -44,14 +51,26 @@ Instead of generic searches, use:
 - Security practices evolve rapidly
 - Platform UIs change without notice
 - API endpoints get versioned/retired
+- We work on bleeding-edge technology
 
 ### Verification Checklist
-Before providing any technical guidance:
+Before providing ANY technical guidance:
 - [ ] Checked current date and using correct year?
 - [ ] Searched for current information if uncertain?
 - [ ] Verified no deprecation warnings?
 - [ ] Confirmed approach works in current version?
 - [ ] Updated documentation if >30 days old?
 
+### Documentation Update Requirements
+- When README or docs show dates >30 days old, update them
+- Add "Current as of {Month} {Year}" to time-sensitive instructions
+- Note deprecation timelines explicitly
+- Update command syntax to latest versions
+
+## Project-Specific Configuration
+
+[Add your project-specific configuration below]
+
 ---
-*Add project-specific configuration below this line*
+
+END OF UNIVERSAL TEMPLATE
