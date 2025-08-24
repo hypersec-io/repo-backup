@@ -112,17 +112,36 @@ BACKUP_METHOD=direct  # or 'archive'
 
 ### Getting Access Tokens
 
+*Note: These instructions are current as of December 2025. Platform interfaces may change - check official documentation if these steps don't match.*
+
 #### GitHub
+
+**Option 1: Personal Access Token (Classic) - Still widely used**
 1. Navigate to: **Settings → Developer settings → Personal access tokens → Tokens (classic)**
    - Direct URL: https://github.com/settings/tokens
 2. Click **Generate new token → Generate new token (classic)**
-3. Set expiration (recommend: 90 days for security)
+3. Set expiration (max 1 year, recommend: 90 days)
 4. Select scopes:
    - ✅ `repo` (Full control of private repositories)
    - Optional: `read:org` if backing up organization repos
 5. Click **Generate token**
 6. Copy immediately - token starts with `ghp_`
 7. Store securely - you won't see it again!
+
+**Option 2: Fine-grained Personal Access Token (GitHub's recommended approach)**
+1. Navigate to: **Settings → Developer settings → Personal access tokens → Fine-grained tokens**
+   - Direct URL: https://github.com/settings/tokens?type=beta
+2. Click **Generate new token**
+3. Configure:
+   - Token name: `repo-backup`
+   - Expiration: Up to 1 year
+   - Repository access: Select specific repos or "All repositories"
+4. Set repository permissions:
+   - Contents: ✅ Read
+   - Metadata: ✅ Read (automatically selected)
+   - Actions: ✅ Read (if backing up workflows)
+5. Click **Generate token**
+6. Copy the token - starts with `github_pat_`
 
 #### GitLab
 1. Navigate to: **User Settings → Access Tokens**
@@ -138,7 +157,14 @@ BACKUP_METHOD=direct  # or 'archive'
 
 #### Bitbucket
 
-**Bitbucket Cloud (bitbucket.org):**
+**⚠️ IMPORTANT: Bitbucket Cloud App Password Deprecation**
+- **September 9, 2025**: No new app passwords can be created
+- **June 9, 2026**: All app passwords stop working
+- Bitbucket is transitioning to Repository Access Tokens and API Tokens
+
+**Bitbucket Cloud (bitbucket.org) - Current Methods:**
+
+**Option 1: App Passwords (deprecated but still working until 2026)**
 1. Navigate to: **Personal settings → App passwords**
    - Direct URL: https://bitbucket.org/account/settings/app-passwords/
 2. Click **Create app password**
@@ -148,7 +174,6 @@ BACKUP_METHOD=direct  # or 'archive'
    - Workspace membership: ✅ Read
    - Projects: ✅ Read
    - Repositories: ✅ Read
-   - Pull requests: ✅ Read (optional)
 5. Click **Create**
 6. Copy the password immediately
 7. In `.env` file use:
@@ -158,6 +183,29 @@ BACKUP_METHOD=direct  # or 'archive'
    # For clone URLs
    BITBUCKET_TOKEN=your-username:app-password
    ```
+
+**Option 2: Repository Access Tokens (recommended for specific repos)**
+1. Navigate to your repository → **Repository Settings**
+2. Under **Security**, select **Access tokens**
+3. Click **Create access token**
+4. Configure token:
+   - Name: `repo-backup`
+   - Permissions: ✅ Read
+   - Expiry: As needed
+5. Copy the token
+6. Note: You'll need separate tokens for each repository
+
+**Option 3: Workspace API Tokens (recommended for multiple repos)**
+1. Navigate to: **Settings → Atlassian account settings → Security**
+2. Choose **Create and manage API tokens → Create API token with scopes**
+3. Name the token: `repo-backup`
+4. Set expiry date
+5. Select **Bitbucket** as the app
+6. Assign permissions:
+   - repository:read
+   - pullrequest:read (optional)
+7. Create and copy token (shown only once!)
+8. Use with your username as before
 
 **Bitbucket Server/Data Center (self-hosted):**
 1. Navigate to: **Profile picture → Manage account → Personal access tokens**
