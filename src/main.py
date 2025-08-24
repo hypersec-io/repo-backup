@@ -124,7 +124,7 @@ class S3BucketManager:
         except ClientError:
             return False
 
-    def create_and_configure_bucket(self, bucket_name: Optional[str] = None) -> str:
+    def create_and_configure_bucket(self, bucket_name: Optional[str] = None, enable_glacier: bool = False) -> str:
         """Create and configure S3 bucket with all security features"""
 
         # Generate bucket name if not provided
@@ -202,27 +202,44 @@ class S3BucketManager:
         )
 
         # Configure lifecycle policy
-        logger.info("Configuring lifecycle policy for Glacier transitions...")
-        lifecycle_config = {
-            "Rules": [
-                {
-                    "ID": "RepoBackupLifecycle",
-                    "Status": "Enabled",
-                    "Filter": {"Prefix": "repos/"},
-                    "Transitions": [
-                        {"Days": 30, "StorageClass": "STANDARD_IA"},
-                        {"Days": 90, "StorageClass": "GLACIER_IR"},
-                        {"Days": 180, "StorageClass": "DEEP_ARCHIVE"},
-                    ],
-                    "NoncurrentVersionTransitions": [
-                        {"NoncurrentDays": 7, "StorageClass": "GLACIER_IR"},
-                        {"NoncurrentDays": 100, "StorageClass": "DEEP_ARCHIVE"},
-                    ],
-                    "NoncurrentVersionExpiration": {"NoncurrentDays": 365},
-                    "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
-                }
-            ]
-        }
+        if enable_glacier:
+            logger.info("Configuring lifecycle policy WITH Glacier transitions...")
+            lifecycle_config = {
+                "Rules": [
+                    {
+                        "ID": "RepoBackupLifecycle",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "repos/"},
+                        "Transitions": [
+                            {"Days": 30, "StorageClass": "STANDARD_IA"},
+                            {"Days": 90, "StorageClass": "GLACIER_IR"},
+                            {"Days": 180, "StorageClass": "DEEP_ARCHIVE"},
+                        ],
+                        "NoncurrentVersionTransitions": [
+                            {"NoncurrentDays": 7, "StorageClass": "GLACIER_IR"},
+                            {"NoncurrentDays": 100, "StorageClass": "DEEP_ARCHIVE"},
+                        ],
+                        "NoncurrentVersionExpiration": {"NoncurrentDays": 365},
+                        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
+                    }
+                ]
+            }
+        else:
+            logger.info("Configuring lifecycle policy WITHOUT Glacier (Standard storage only)...")
+            lifecycle_config = {
+                "Rules": [
+                    {
+                        "ID": "RepoBackupLifecycle",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "repos/"},
+                        "Transitions": [
+                            {"Days": 90, "StorageClass": "STANDARD_IA"},
+                        ],
+                        "NoncurrentVersionExpiration": {"NoncurrentDays": 365},
+                        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
+                    }
+                ]
+            }
         self.s3_client.put_bucket_lifecycle_configuration(
             Bucket=bucket_name, LifecycleConfiguration=lifecycle_config
         )
@@ -1377,6 +1394,11 @@ def main():
         help="S3 bucket name (auto-generated if not provided, s3 mode only)",
     )
     s3_group.add_argument(
+        "--enable-glacier",
+        action="store_true",
+        help="Enable Glacier storage transitions for long-term archival (s3 mode only, default: disabled)",
+    )
+    s3_group.add_argument(
         "--profile",
         default=get_env_default("AWS_PROFILE"),
         metavar="PROFILE",
@@ -1533,7 +1555,7 @@ def main():
         manager = S3BucketManager(profile=args.profile)
 
         # Create and configure bucket
-        bucket_name = manager.create_and_configure_bucket(args.bucket_name)
+        bucket_name = manager.create_and_configure_bucket(args.bucket_name, enable_glacier=args.enable_glacier)
 
         # Test bucket
         if manager.test_bucket(bucket_name):
@@ -1558,6 +1580,7 @@ def main():
                     logger.info("=== Setup Complete ===")
                     logger.info(f"Bucket: {bucket_name}")
                     logger.info(f"Region: {args.region}")
+                    logger.info(f"Glacier: {'Enabled' if args.enable_glacier else 'Disabled (Standard storage only)'}")
                     logger.info(f"IAM User: {user_name}")
                     logger.info(f"AWS Profile: {profile_name}")
                     logger.info("")

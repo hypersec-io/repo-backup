@@ -158,6 +158,45 @@ python backup_repos.py --verbose
 - Contains the bare git repository
 - Extract with: `tar -xzf repo.tar.gz`
 
+## S3 Setup
+
+### Automated S3 Configuration
+
+The tool can automatically create and configure an S3 bucket with proper security settings:
+
+```bash
+# Basic setup (Standard storage only, no Glacier)
+repo-backup s3 --setup
+
+# Setup with Glacier enabled for long-term archival
+repo-backup s3 --setup --enable-glacier
+
+# Setup with custom bucket name
+repo-backup s3 --setup --bucket-name my-backup-bucket
+
+# Setup with specific region
+repo-backup s3 --setup --region eu-west-1
+```
+
+**Storage Options:**
+- **Standard (default)**: Fast access, higher cost
+  - Transitions to Standard-IA after 90 days
+  - Old versions expire after 365 days
+  
+- **With Glacier** (`--enable-glacier`): Cost-optimized for long-term storage
+  - Transitions to Standard-IA after 30 days
+  - Transitions to Glacier IR after 90 days
+  - Transitions to Deep Archive after 180 days
+  - Old versions move to Glacier after 7 days
+
+The setup process will:
+1. Create an S3 bucket with versioning enabled
+2. Configure lifecycle policies based on your storage preference
+3. Apply security settings (encryption, block public access)
+4. Create a dedicated IAM user with minimal permissions
+5. Configure AWS CLI profile
+6. Generate `.env` file with configuration
+
 ## S3 Structure
 
 ```
@@ -178,16 +217,39 @@ s3://your-bucket/
 ## Restoring Backups
 
 ### From Git Bundle
+
+#### Method 1: Direct clone from bundle
 ```bash
-# Download from S3
+# Download bundle from S3 to your root directory
+cd /path/to/your/root/directory
 aws s3 cp s3://your-bucket/repos/github/org/repo.bundle repo.bundle
 
-# Clone from bundle
+# Clone directly from the bundle file
 git clone repo.bundle restored-repo
 
-# Or add as remote to existing repo
+# Enter the restored repository
+cd restored-repo
+
+# (Optional) Set the correct remote origin
+git remote set-url origin https://github.com/org/repo.git
+
+# Verify the restoration
+git log --oneline -5  # Check commit history
+git branch -a         # See all branches
+git tag -l           # List all tags
+```
+
+#### Method 2: Fetch into existing repository
+```bash
+# Download bundle from S3
+aws s3 cp s3://your-bucket/repos/github/org/repo.bundle repo.bundle
+
+# Add bundle as remote to existing repo
 git remote add backup repo.bundle
 git fetch backup
+
+# Merge or checkout branches as needed
+git checkout backup/main
 ```
 
 ### From Archive

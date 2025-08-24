@@ -63,21 +63,20 @@ class LocalBackup:
             bool: Success status
         """
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             platform_dir = self.backup_path / repo.platform / repo.owner
             platform_dir.mkdir(parents=True, exist_ok=True)
 
             if self.method == "direct":
-                return self._direct_backup(repo, platform_dir, timestamp)
+                return self._direct_backup(repo, platform_dir)
             else:
-                return self._archive_backup(repo, platform_dir, timestamp)
+                return self._archive_backup(repo, platform_dir)
 
         except Exception as e:
             self.logger.error(f"Failed to backup {repo.name}: {e}")
             return False
 
     def _direct_backup(
-        self, repo: Repository, backup_dir: Path, timestamp: str
+        self, repo: Repository, backup_dir: Path
     ) -> bool:
         """Backup repository as git bundle"""
         try:
@@ -86,7 +85,6 @@ class LocalBackup:
 
             unique_id = uuid.uuid4().hex[:8]
             repo_path = self.temp_dir / f"{repo.name}_{unique_id}_clone"
-            bundle_path = backup_dir / f"{repo.name}_{timestamp}.bundle"
 
             # Clone repository
             self.logger.info(f"[BACKUP] Cloning {repo.name}...")
@@ -101,6 +99,48 @@ class LocalBackup:
                     f"[ERROR] Clone failed for {repo.name}: {result.stderr}"
                 )
                 return False
+            
+            # Get the last commit date from the repository
+            last_commit_cmd = ["git", "log", "-1", "--format=%cd", "--date=format:%Y%m%d_%H%M%S"]
+            last_commit_result = subprocess.run(
+                last_commit_cmd, capture_output=True, text=True, cwd=str(repo_path)
+            )
+            
+            if last_commit_result.returncode != 0:
+                # Check if it's an empty repository
+                check_empty = subprocess.run(
+                    ["git", "rev-list", "-n", "1", "--all"],
+                    capture_output=True, text=True, cwd=str(repo_path)
+                )
+                if check_empty.returncode != 0 or not check_empty.stdout.strip():
+                    self.logger.info(
+                        f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
+                    )
+                    if repo_path.exists():
+                        shutil.rmtree(repo_path)
+                    return True
+                else:
+                    self.logger.error(f"[ERROR] Failed to get last commit date for {repo.name}")
+                    return False
+            
+            last_commit_date = last_commit_result.stdout.strip()
+            if not last_commit_date:
+                # Empty repo, use current date as fallback
+                last_commit_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Check if a backup with this commit date already exists
+            bundle_path = backup_dir / f"{repo.name}_{last_commit_date}.bundle"
+            
+            if bundle_path.exists():
+                file_size = bundle_path.stat().st_size
+                self.logger.info(
+                    f"[SKIP] Backup already exists for {repo.name} with commit date {last_commit_date}: "
+                    f"{bundle_path.name} ({file_size / 1024 / 1024:.2f} MB)"
+                )
+                # Cleanup temp directory
+                if repo_path.exists():
+                    shutil.rmtree(repo_path)
+                return True
 
             # Fetch LFS objects if LFS is used in the repository
             lfs_check = subprocess.run(
@@ -164,7 +204,7 @@ class LocalBackup:
             return False
 
     def _archive_backup(
-        self, repo: Repository, backup_dir: Path, timestamp: str
+        self, repo: Repository, backup_dir: Path
     ) -> bool:
         """Backup repository as tar.gz archive"""
         try:
@@ -173,7 +213,6 @@ class LocalBackup:
 
             unique_id = uuid.uuid4().hex[:8]
             repo_path = self.temp_dir / f"{repo.name}_{unique_id}_clone"
-            archive_path = backup_dir / f"{repo.name}_{timestamp}.tar.gz"
 
             # Clone repository
             self.logger.info(f"[BACKUP] Cloning {repo.name}...")
@@ -188,6 +227,48 @@ class LocalBackup:
                     f"[ERROR] Clone failed for {repo.name}: {result.stderr}"
                 )
                 return False
+            
+            # Get the last commit date from the repository
+            last_commit_cmd = ["git", "log", "-1", "--format=%cd", "--date=format:%Y%m%d_%H%M%S"]
+            last_commit_result = subprocess.run(
+                last_commit_cmd, capture_output=True, text=True, cwd=str(repo_path)
+            )
+            
+            if last_commit_result.returncode != 0:
+                # Check if it's an empty repository
+                check_empty = subprocess.run(
+                    ["git", "rev-list", "-n", "1", "--all"],
+                    capture_output=True, text=True, cwd=str(repo_path)
+                )
+                if check_empty.returncode != 0 or not check_empty.stdout.strip():
+                    self.logger.info(
+                        f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
+                    )
+                    if repo_path.exists():
+                        shutil.rmtree(repo_path)
+                    return True
+                else:
+                    self.logger.error(f"[ERROR] Failed to get last commit date for {repo.name}")
+                    return False
+            
+            last_commit_date = last_commit_result.stdout.strip()
+            if not last_commit_date:
+                # Empty repo, use current date as fallback
+                last_commit_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Check if a backup with this commit date already exists
+            archive_path = backup_dir / f"{repo.name}_{last_commit_date}.tar.gz"
+            
+            if archive_path.exists():
+                file_size = archive_path.stat().st_size
+                self.logger.info(
+                    f"[SKIP] Backup already exists for {repo.name} with commit date {last_commit_date}: "
+                    f"{archive_path.name} ({file_size / 1024 / 1024:.2f} MB)"
+                )
+                # Cleanup temp directory
+                if repo_path.exists():
+                    shutil.rmtree(repo_path)
+                return True
 
             # Fetch LFS objects if LFS is used in the repository
             lfs_check = subprocess.run(
