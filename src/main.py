@@ -114,10 +114,7 @@ class S3BucketManager:
     def generate_bucket_name(self, prefix: str = "repo-backup") -> str:
         """Generate unique bucket name using account ID"""
         account_id = self.get_account_id()
-        import time
-
-        timestamp = int(time.time())
-        return f"{prefix}-{account_id}-{timestamp}"
+        return f"{prefix}-{account_id}"
 
     def bucket_exists(self, bucket_name: str) -> bool:
         """Check if bucket exists and is accessible"""
