@@ -53,11 +53,49 @@ uv run repo-backup local /tmp/test-backup --test
 
 ### Step 1: S3 Bucket Setup (For S3 Backups)
 
-If you plan to use S3 for backups, create and configure the bucket first:
+**⚠️ IMPORTANT: Setup requires AWS admin permissions - uses YOUR credentials, NOT .env**
+
+#### Required AWS Permissions for Setup User
+
+The AWS user/role running `--setup` must have these permissions:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketVersioning",
+        "s3:PutBucketEncryption",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketLifecycleConfiguration",
+        "s3:PutBucketTagging",
+        "s3:PutBucketPolicy",
+        "s3:GetBucketLocation",
+        "s3:ListBucket",
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:PutUserPolicy",
+        "iam:AttachUserPolicy",
+        "iam:CreatePolicy",
+        "iam:TagUser",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+#### Running Setup
 
 ```bash
-# Basic setup (Standard storage only)
+# Basic setup (uses your default AWS credentials)
 repo-backup s3 --setup
+
+# Setup with specific AWS profile (NOT from .env)
+repo-backup s3 --setup --setup-profile admin-profile
 
 # With Glacier for cost-optimized long-term storage
 repo-backup s3 --setup --enable-glacier
@@ -65,6 +103,11 @@ repo-backup s3 --setup --enable-glacier
 # Custom bucket name and region
 repo-backup s3 --setup --bucket-name my-backup-bucket --region us-east-1
 ```
+
+**Note:** The `--setup` command intentionally ignores AWS credentials in `.env` to prevent using the limited backup user for administrative tasks. It uses:
+1. `--setup-profile` if specified
+2. Explicitly specified `--profile` (not from .env)
+3. Your default AWS credentials
 
 This automated setup will:
 - ✅ Create S3 bucket with unique name (or use your custom name)
