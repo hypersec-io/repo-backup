@@ -35,3 +35,11 @@
 - Empty repositories (no commits) will fail bundle creation - this is expected
 - 97-98% success rate is normal due to empty repos
 - LFS repositories are supported with `git lfs fetch --all`
+
+## Release Management
+- **IMPORTANT**: Use semantic-release workflow instead of direct git commands
+- Use `./scripts/ci` to run CI pipeline before any commits
+- Use `./scripts/release` to create semantic releases with conventional commits
+- Never use `git add`, `git commit`, `git tag` directly - always use semantic-release
+- CI pipeline includes: formatting, linting, testing, security scanning, building
+- All changes must pass CI before being committed via semantic-release
