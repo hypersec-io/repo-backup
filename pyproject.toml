@@ -78,6 +78,7 @@ version_variables = [
 version_pattern = [
     "VERSION:{version}"
 ]
+additional_files = ["VERSION"]
 build_command = "python -m build"
 dist_path = "dist/"
 upload_to_pypi = false
