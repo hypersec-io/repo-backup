@@ -1402,7 +1402,12 @@ def main():
         "--profile",
         default=get_env_default("AWS_PROFILE"),
         metavar="PROFILE",
-        help="AWS profile to use (env: AWS_PROFILE)",
+        help="AWS profile to use (env: AWS_PROFILE, ignored during --setup unless explicitly specified)",
+    )
+    s3_group.add_argument(
+        "--setup-profile",
+        metavar="PROFILE",
+        help="AWS profile to use for --setup only (overrides --profile, requires admin permissions)",
     )
     s3_group.add_argument(
         "--region",
@@ -1549,10 +1554,37 @@ def main():
 
     # S3 Setup mode
     if args.mode == "s3" and args.setup:
+        # For setup, NEVER use AWS credentials from .env - use current user or specified profile
+        # Priority: --setup-profile > explicitly specified --profile > default AWS credentials (NOT .env)
+        
+        if args.setup_profile:
+            # User explicitly specified a setup profile
+            setup_profile = args.setup_profile
+            os.environ["AWS_PROFILE"] = setup_profile
+            logger.info(f"Using AWS profile '{setup_profile}' for S3 setup (from --setup-profile)")
+        elif args.profile and args.profile != get_env_default("AWS_PROFILE"):
+            # User explicitly specified --profile (not from .env)
+            setup_profile = args.profile
+            os.environ["AWS_PROFILE"] = setup_profile
+            logger.info(f"Using AWS profile '{setup_profile}' for S3 setup (from --profile)")
+        else:
+            # Use default AWS credentials (not .env)
+            setup_profile = None
+            if "AWS_PROFILE" in os.environ:
+                del os.environ["AWS_PROFILE"]
+            logger.info("Using default AWS credentials for S3 setup (ignoring .env)")
+        
         os.environ["AWS_REGION"] = args.region
-        os.environ["AWS_PROFILE"] = args.profile
+        logger.info(f"AWS Region: {args.region}")
+        logger.info("")
+        logger.info("=== S3 Bucket Setup Starting ===")
+        logger.info("This requires AWS admin permissions to:")
+        logger.info("  - Create S3 bucket")
+        logger.info("  - Configure bucket policies")
+        logger.info("  - Create IAM user and policies")
+        logger.info("")
 
-        manager = S3BucketManager(profile=args.profile)
+        manager = S3BucketManager(profile=setup_profile)
 
         # Create and configure bucket
         bucket_name = manager.create_and_configure_bucket(args.bucket_name, enable_glacier=args.enable_glacier)
