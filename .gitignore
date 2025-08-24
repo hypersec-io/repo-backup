@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# UV
+.venv/
+uv.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific
+.env
+.env.local
+!.env.example
+*.log
+logs/
+.tmp/
+/tmp/
+*.bundle
+*.tar.gz
+
+# Backup directories
+/mnt/
+/var/tmp/repo-backup/
+tmp/
+
+# Test files
+test*.py
+*_test.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials (extra safety)
+*token*
+*secret*
+*password*
+*key*
+*.pem
+*.key
