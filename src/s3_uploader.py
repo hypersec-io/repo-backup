@@ -62,21 +62,16 @@ class S3Uploader:
             method: 'direct' for streaming or 'archive' for tar.gz
         """
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            s3_key = (
-                f"{self.prefix}/{repo.platform}/{repo.owner}/{repo.name}_{timestamp}"
-            )
-
             if method == "direct":
-                return self._direct_upload(repo, s3_key)
+                return self._direct_upload(repo)
             else:
-                return self._archive_upload(repo, s3_key)
+                return self._archive_upload(repo)
 
         except Exception as e:
             self.logger.error(f"Failed to upload {repo.name}: {e}")
             return False
 
-    def _direct_upload(self, repo: Repository, s3_key_base: str) -> bool:
+    def _direct_upload(self, repo: Repository) -> bool:
         """Stream repository directly to S3 using git bundle"""
         try:
             repo_path = os.path.join(self.temp_dir, f"{repo.name}_clone")
@@ -146,6 +141,57 @@ class S3Uploader:
                 self.logger.debug(
                     f"Repository directory contents: {os.listdir(repo_path) if os.path.isdir(repo_path) else 'Not a directory'}"
                 )
+            
+            # Get the last commit date from the repository
+            last_commit_cmd = ["git", "log", "-1", "--format=%cd", "--date=format:%Y%m%d_%H%M%S"]
+            last_commit_result = subprocess.run(
+                last_commit_cmd, capture_output=True, text=True, cwd=repo_path
+            )
+            
+            if last_commit_result.returncode != 0:
+                # Check if it's an empty repository
+                check_empty = subprocess.run(
+                    ["git", "rev-list", "-n", "1", "--all"],
+                    capture_output=True, text=True, cwd=repo_path
+                )
+                if check_empty.returncode != 0 or not check_empty.stdout.strip():
+                    self.logger.info(
+                        f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
+                    )
+                    if os.path.exists(repo_path):
+                        shutil.rmtree(repo_path)
+                    return True
+                else:
+                    self.logger.error(f"Failed to get last commit date for {repo.name}")
+                    return False
+            
+            last_commit_date = last_commit_result.stdout.strip()
+            if not last_commit_date:
+                # Empty repo, use current date as fallback
+                last_commit_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Check if this version already exists in S3
+            s3_key = f"{self.prefix}/{repo.platform}/{repo.owner}/{repo.name}_{last_commit_date}.bundle"
+            
+            try:
+                # Check if object exists in S3
+                response = self.s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
+                file_size = response.get('ContentLength', 0)
+                self.logger.info(
+                    f"[SKIP] Backup already exists in S3 for {repo.name} with commit date {last_commit_date}: "
+                    f"{s3_key} ({file_size / 1024 / 1024:.2f} MB)"
+                )
+                # Cleanup
+                if os.path.exists(repo_path):
+                    shutil.rmtree(repo_path)
+                if os.path.exists(bundle_path):
+                    os.remove(bundle_path)
+                return True
+            except (self.s3_client.exceptions.NoSuchKey, self.s3_client.exceptions.ClientError) as e:
+                # Object doesn't exist, proceed with backup
+                pass
+            except Exception as e:
+                self.logger.debug(f"Error checking S3 object existence: {e}")
 
             # Create git bundle
             self.logger.info(f"Creating bundle for {repo.name}...")
@@ -171,8 +217,7 @@ class S3Uploader:
                     self.logger.error(f"Bundle creation failed: {result.stderr}")
                     return False
 
-            # Upload bundle to S3
-            s3_key = f"{s3_key_base}.bundle"
+            # Upload bundle to S3 (s3_key already set above with last commit date)
             file_size = os.path.getsize(bundle_path)
 
             self.logger.info(
@@ -218,7 +263,7 @@ class S3Uploader:
             self.logger.error(f"Direct upload failed for {repo.name}: {e}")
             return False
 
-    def _archive_upload(self, repo: Repository, s3_key_base: str) -> bool:
+    def _archive_upload(self, repo: Repository) -> bool:
         """Clone and archive repository before uploading"""
         try:
             repo_path = os.path.join(self.temp_dir, f"{repo.name}_clone")
