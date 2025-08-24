@@ -1,5 +1,16 @@
 # Claude Code Configuration Notes
 
+## CRITICAL: Always Use Current Information
+**⚠️ RECENCY REQUIREMENT**: This project requires bleeding-edge, up-to-date knowledge. 
+- **ALWAYS** use WebSearch to verify current information before providing guidance
+- **ALWAYS** check the current date and use the current year (not 2024 or older)
+- **Platform UIs change frequently** - if instructions are >30 days old, verify them
+- **Deprecated features cause problems** - always check for deprecation notices
+- **Token/API changes are common** - verify authentication methods are still current
+- When documentation in README shows a date >1 month old, update it with current info
+- Prioritize 2025 search results over older information
+- If uncertain about current state, explicitly search for "{topic} {current_month} 2025 latest"
+
 ## Important Paths
 - **Working directory**: `/var/tmp/repo-backup` (S3 mode) or `local_path/tmp/repo-backup` (local mode)
 - **Local backup path**: `/mnt/hypersec/repo-backup`
