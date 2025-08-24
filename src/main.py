@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+Enterprise repository backup tool for GitHub, GitLab, and Bitbucket
+"""
 
 import argparse
 import configparser
