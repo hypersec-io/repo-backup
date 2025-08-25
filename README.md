@@ -566,6 +566,15 @@ export AWS_SECRET_ACCESS_KEY=...
 
 MIT License - See LICENSE file for details
 
+## Security
+
+**⚠️ IMPORTANT: Token Security**
+- Never commit real tokens to version control
+- Use `.env.local` for your actual tokens (automatically ignored by git)
+- The `.env` file in the repository contains only placeholder values
+- Rotate tokens regularly and use minimal required permissions
+- For CI/CD, use separate tokens with limited scope
+
 ## Support
 
 For issues or questions:

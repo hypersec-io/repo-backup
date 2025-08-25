@@ -21,7 +21,14 @@ class GitHubManager(RepositoryManager):
                 f"GitHub authentication successful for user: {self.user.login}"
             )
         except Exception as e:
-            self.logger.error(f"GitHub authentication failed: {e}")
+            error_msg = str(e)
+            if "401" in error_msg or "Bad credentials" in error_msg:
+                self.logger.error(
+                    "GitHub authentication failed: Invalid or expired token"
+                )
+                self.logger.error("Please check your GITHUB_TOKEN in the .env file")
+            else:
+                self.logger.error(f"GitHub authentication failed: {e}")
             raise ValueError(f"Invalid GitHub token: {e}") from e
 
         # Get organization filters from environment

@@ -58,11 +58,25 @@ fi
 # Step 6: Security scanning
 run_step "Security Scanning (pip-audit)" "uv run pip-audit --desc --format=json"
 
-# Step 7: Run unit tests
+# Step 7: Run unit tests (without production tokens)
+# Clear production tokens to prevent tests from using real API calls
+export GITHUB_TOKEN_BACKUP="$GITHUB_TOKEN"
+export GITLAB_TOKEN_BACKUP="$GITLAB_TOKEN"  
+export BITBUCKET_TOKEN_BACKUP="$BITBUCKET_TOKEN"
+unset GITHUB_TOKEN GITLAB_TOKEN BITBUCKET_TOKEN
 run_step "Unit Tests" "uv run pytest tests/ -v --tb=short"
+# Restore production tokens after tests
+export GITHUB_TOKEN="$GITHUB_TOKEN_BACKUP"
+export GITLAB_TOKEN="$GITLAB_TOKEN_BACKUP"
+export BITBUCKET_TOKEN="$BITBUCKET_TOKEN_BACKUP"
 
-# Step 8: Run unit tests with coverage
+# Step 8: Run unit tests with coverage (without production tokens)
+unset GITHUB_TOKEN GITLAB_TOKEN BITBUCKET_TOKEN
 run_step "Test Coverage" "uv run pytest tests/ --cov=src --cov-report=term --cov-report=html --cov-fail-under=20"
+# Restore production tokens after coverage tests
+export GITHUB_TOKEN="$GITHUB_TOKEN_BACKUP"
+export GITLAB_TOKEN="$GITLAB_TOKEN_BACKUP"
+export BITBUCKET_TOKEN="$BITBUCKET_TOKEN_BACKUP"
 
 # Step 9: Run mock installation test
 run_step "Mock Installation Test" "uv run python test_mock_install.py"

@@ -131,9 +131,10 @@ minor_tags = ["feat"]
 patch_tags = ["fix", "perf"]
 
 [tool.semantic_release.remote]
-name = "origin"
+name = "origin" 
 type = "github"
 ignore_token_for_push = false
+token = { env = "GITHUB_CI_TOKEN" }
 
 [tool.semantic_release.publish]
 dist_glob_patterns = ["dist/*"]
