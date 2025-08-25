@@ -67,6 +67,41 @@ Before providing ANY technical guidance:
 - Note deprecation timelines explicitly
 - Update command syntax to latest versions
 
+## AWS Best Practices
+
+### S3 Setup Mode Authentication
+- **NEVER** use .env credentials for administrative tasks like S3 setup
+- Setup mode should use current AWS session or explicitly specified admin profile
+- Clear AWS_PROFILE environment variable when not using profiles
+- Priority: --setup-profile > explicit --profile > current AWS session
+
+### Error Handling
+- Always handle expired AWS sessions gracefully
+- Provide specific, actionable error messages for:
+  - Expired tokens (with refresh commands)
+  - Invalid credentials
+  - Access denied (with permission requirements)
+- Exit cleanly with SystemExit(1) after showing error
+
+### S3 Bucket Creation
+- Always add README.md to newly created buckets documenting:
+  - Purpose and structure
+  - Configuration settings
+  - Restoration instructions
+- Use placeholder syntax (<variable>) not {variable} in f-string literals
+- Test bucket access after creation (read/write/versioning)
+
+## Git Platform Authentication (August 2025)
+- **GitHub**: Classic tokens (ghp_) and fine-grained tokens (github_pat_)
+- **GitLab**: Max 365-400 day expiration as of 2025
+- **Bitbucket**: App passwords deprecated Sept 2025/June 2026 - use API tokens
+- Always note "Current as of {Month} {Year}" in documentation
+
+## File Operations
+- Use last commit date for backup filenames, not current date
+- Check if backups already exist before re-downloading/creating
+- Implement rsync-like behavior (only backup newer/missing)
+
 ## Project-Specific Configuration
 
 [Add your project-specific configuration below]

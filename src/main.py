@@ -326,6 +326,76 @@ class S3BucketManager:
         )
 
         logger.info(f"Bucket {bucket_name} configured successfully!")
+        
+        # Add README.md to document the bucket
+        logger.info("Adding README.md to bucket...")
+        readme_content = f"""# Repository Backup Bucket
+
+This S3 bucket contains automated backups of Git repositories from GitHub, GitLab, and Bitbucket.
+
+## Bucket Information
+- **Bucket Name**: {bucket_name}
+- **Region**: {self.region}
+- **Created**: {datetime.now().strftime('%Y-%m-%d')}
+- **Purpose**: Automated repository backups
+
+## Structure
+```
+{bucket_name}/
+├── repos/
+│   ├── github/
+│   │   └── <owner>/<repo>_<last_commit_date>.bundle
+│   ├── gitlab/
+│   │   └── <group>/<repo>_<last_commit_date>.bundle
+│   └── bitbucket/
+│       └── <workspace>/<repo>_<last_commit_date>.bundle
+└── README.md (this file)
+```
+
+## Configuration
+- **Versioning**: Enabled
+- **Encryption**: AES256
+- **Public Access**: Blocked
+- **Lifecycle**: {"Glacier transitions enabled" if enable_glacier else "Standard storage only (90 days to IA)"}
+
+## Restoring Backups
+
+To restore a repository from a bundle:
+```bash
+# Download the bundle
+aws s3 cp s3://{bucket_name}/repos/github/org/repo_20250825_120000.bundle repo.bundle
+
+# Clone from bundle
+git clone repo.bundle restored-repo
+
+# Set correct remote
+cd restored-repo
+git remote set-url origin https://github.com/org/repo.git
+```
+
+## Security
+- All public access is blocked
+- Server-side encryption is enabled
+- Versioning protects against accidental deletion
+- IAM user has minimal required permissions
+
+## Management
+This bucket is managed by the repo-backup tool.
+Repository: https://github.com/hypersec-io/infra-repo-backup
+"""
+        
+        try:
+            self.s3_client.put_object(
+                Bucket=bucket_name,
+                Key="README.md",
+                Body=readme_content.encode('utf-8'),
+                ContentType="text/markdown",
+                ServerSideEncryption="AES256"
+            )
+            logger.info("[OK] README.md added to bucket")
+        except Exception as e:
+            logger.warning(f"Could not add README.md to bucket: {e}")
+        
         return bucket_name
 
     def test_bucket(self, bucket_name: str) -> bool:
