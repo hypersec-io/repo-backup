@@ -73,12 +73,9 @@ packages = ["src"]
 [tool.semantic_release]
 version_variables = [
     "src/__init__.py:__version__",
-    "pyproject.toml:version"
+    "pyproject.toml:version",
+    "VERSION"
 ]
-version_pattern = [
-    "VERSION:{version}"
-]
-additional_files = ["VERSION"]
 build_command = "python -m build"
 dist_path = "dist/"
 upload_to_pypi = false
