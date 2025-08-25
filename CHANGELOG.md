@@ -41,4 +41,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-*This changelog is automatically generated using semantic-release*
+*This changelog follows semantic versioning and conventional commits*

@@ -9,6 +9,19 @@ from .base import Repository, RepositoryManager
 
 
 class BitbucketManager(RepositoryManager):
+    """
+    Bitbucket repository manager with workspace-scoped token support.
+
+    IMPORTANT LIMITATION: Unlike GitHub/GitLab, Bitbucket uses workspace-scoped tokens.
+    This means:
+    - One token can only access ONE workspace (not multiple like GitHub orgs)
+    - Cannot discover all workspaces with a single token
+    - Must specify BITBUCKET_WORKSPACE for workspace tokens
+    - Different architecture from GitHub (read:org) and GitLab (group discovery)
+
+    This is a Bitbucket platform limitation, not a tool limitation.
+    """
+
     def __init__(
         self, url: str, token: str, exclude_personal: bool = True, username: str = None
     ):
@@ -18,14 +31,21 @@ class BitbucketManager(RepositoryManager):
         self.username = username  # Optional for legacy app passwords
         self.is_cloud = "bitbucket.org" in url
 
-        # Bitbucket Cloud supports:
-        # 1. App Passwords (short tokens, ~36 chars) - use Basic auth with username
-        # 2. Workspace Access Tokens (long tokens starting with ATCTT) - use Bearer auth, no username needed
-        # Note: ATATT tokens are Atlassian API tokens for Jira/Confluence (NOT Bitbucket)
+        # Bitbucket Cloud authentication types (as of August 2025):
+        # 1. App Passwords (legacy, being deprecated) - use Basic auth with username
+        # 2. Workspace Access Tokens (current, ATCTT prefix) - use Bearer auth, workspace-scoped
+        # Note: ATATT tokens are for Jira/Confluence, NOT Bitbucket
         self.is_workspace_token = token.startswith("ATCTT") if token else False
         self.is_app_password = (
             not self.is_workspace_token
         )  # If not workspace token, assume app password
+
+        # CRITICAL: Workspace tokens require explicit workspace configuration
+        # Unlike GitHub/GitLab where we can discover accessible organizations/groups,
+        # Bitbucket workspace tokens are scoped to a SINGLE workspace only
+        self.workspace = (
+            os.getenv("BITBUCKET_WORKSPACE") if self.is_workspace_token else None
+        )
 
         # Get group filters from environment
         include_groups_env = os.getenv("BITBUCKET_INCLUDE_GROUPS", "")
@@ -48,12 +68,13 @@ class BitbucketManager(RepositoryManager):
         # Test authentication first
         # Workspace tokens might not have access to /user endpoint, so test with repositories
         if self.is_workspace_token:
-            # For workspace tokens, test with repositories endpoint
-            test_url = (
-                f"https://api.bitbucket.org/2.0/repositories/{self.username}"
-                if self.username
-                else "https://api.bitbucket.org/2.0/repositories"
-            )
+            # For workspace tokens, test with the workspace's repositories endpoint
+            if not self.workspace:
+                self.logger.error(
+                    "[ERROR] Workspace access token requires BITBUCKET_WORKSPACE to be set"
+                )
+                return repos
+            test_url = f"https://api.bitbucket.org/2.0/repositories/{self.workspace}"
         else:
             # For app passwords, test with user endpoint
             test_url = "https://api.bitbucket.org/2.0/user"
@@ -64,8 +85,62 @@ class BitbucketManager(RepositoryManager):
             return repos
 
         if self.is_cloud:
-            if self.include_groups:
-                # Only get repositories from specified workspaces
+            # WORKSPACE TOKEN LIMITATION: Can only access ONE workspace per token
+            # This is different from GitHub (can access user + all orgs with read:org)
+            # and GitLab (can discover all accessible groups with read_api)
+            if self.is_workspace_token:
+                if not self.workspace:
+                    self.logger.error(
+                        "[ERROR] Workspace access token requires BITBUCKET_WORKSPACE to be set"
+                    )
+                    self.logger.error(
+                        "[ERROR] Unlike GitHub/GitLab, Bitbucket tokens are workspace-scoped"
+                    )
+                    return repos
+
+                self.logger.info(
+                    f"Using workspace access token for workspace: {self.workspace}"
+                )
+                self.logger.info(
+                    f"[LIMITATION] This token can ONLY access workspace '{self.workspace}'"
+                )
+                workspace_repos = self._get_workspace_repos(self.workspace)
+                self.logger.info(
+                    f"Found {len(workspace_repos)} repositories in workspace {self.workspace}"
+                )
+
+                for repo in workspace_repos:
+                    clone_url = self._get_clone_url(repo)
+                    is_owned_by_user = repo["owner"]["type"] == "user"
+                    is_corporate = (
+                        repo["owner"]["type"] in ["team"] or not is_owned_by_user
+                    )
+
+                    if self.exclude_personal and is_owned_by_user:
+                        continue
+
+                    if is_corporate or not self.exclude_personal:
+                        repos.append(
+                            Repository(
+                                name=repo["name"],
+                                clone_url=clone_url,
+                                owner=repo["workspace"]["slug"],
+                                is_private=repo.get("is_private", True),
+                                is_fork=repo.get("parent") is not None,
+                                is_owned_by_user=is_owned_by_user,
+                                platform="bitbucket",
+                                size_kb=(
+                                    repo.get("size", 0) // 1024
+                                    if repo.get("size")
+                                    else None
+                                ),
+                                default_branch=repo.get("mainbranch", {}).get(
+                                    "name", "main"
+                                ),
+                            )
+                        )
+            elif self.include_groups:
+                # For app passwords, can filter to specific workspaces
                 self.logger.info(
                     f"Filtering to specific Bitbucket workspaces: {', '.join(self.include_groups)}"
                 )

@@ -39,11 +39,11 @@ from .gitlab_manager import GitLabManager
 from .local_backup import LocalBackup
 from .s3_uploader import S3Uploader
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (override existing env vars)
+load_dotenv(override=True)
 
 
-def setup_logging(verbose: bool = False, log_file: str = "backup-repo.log"):
+def setup_logging(verbose: bool = False, log_file: str = "repo-backup.log"):
     """Setup console and file logging with loguru"""
 
     # Remove default loguru handler
@@ -113,7 +113,7 @@ class S3BucketManager:
             return response["Account"]
         except (ClientError, TokenRetrievalError) as e:
             error_msg = str(e)
-            if 'ExpiredToken' in error_msg or 'Token has expired' in error_msg:
+            if "ExpiredToken" in error_msg or "Token has expired" in error_msg:
                 logger.error("")
                 logger.error("❌ AWS session token has expired!")
                 logger.error("")
@@ -123,20 +123,24 @@ class S3BucketManager:
                 else:
                     logger.error("  - For SSO: aws sso login --profile <profile-name>")
                     logger.error("  - For IAM: aws configure")
-                    logger.error("  - For temporary credentials: export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+                    logger.error(
+                        "  - For temporary credentials: export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+                    )
                 logger.error("")
                 raise SystemExit(1)
-            elif 'InvalidClientTokenId' in error_msg:
+            elif "InvalidClientTokenId" in error_msg:
                 logger.error("")
                 logger.error("❌ Invalid AWS credentials!")
                 logger.error("")
                 logger.error("Your AWS credentials are not valid. Please check:")
                 logger.error("  - Correct profile is being used")
                 logger.error("  - Credentials are not expired")
-                logger.error("  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct")
+                logger.error(
+                    "  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct"
+                )
                 logger.error("")
                 raise SystemExit(1)
-            elif 'AccessDenied' in error_msg:
+            elif "AccessDenied" in error_msg:
                 logger.error("")
                 logger.error("❌ Access Denied!")
                 logger.error("")
@@ -159,7 +163,9 @@ class S3BucketManager:
         except ClientError:
             return False
 
-    def create_and_configure_bucket(self, bucket_name: Optional[str] = None, enable_glacier: bool = False) -> str:
+    def create_and_configure_bucket(
+        self, bucket_name: Optional[str] = None, enable_glacier: bool = False
+    ) -> str:
         """Create and configure S3 bucket with all security features"""
 
         # Generate bucket name if not provided
@@ -260,7 +266,9 @@ class S3BucketManager:
                 ]
             }
         else:
-            logger.info("Configuring lifecycle policy WITHOUT Glacier (Standard storage only)...")
+            logger.info(
+                "Configuring lifecycle policy WITHOUT Glacier (Standard storage only)..."
+            )
             lifecycle_config = {
                 "Rules": [
                     {
@@ -287,7 +295,7 @@ class S3BucketManager:
                 "TagSet": [
                     {"Key": "Purpose", "Value": "Repository-Backup"},
                     {"Key": "Environment", "Value": "Production"},
-                    {"Key": "ManagedBy", "Value": "backup-repo-tool"},
+                    {"Key": "ManagedBy", "Value": "repo-backup-tool"},
                     {"Key": "CreatedBy", "Value": "Python-Script"},
                 ]
             },
@@ -326,7 +334,7 @@ class S3BucketManager:
         )
 
         logger.info(f"Bucket {bucket_name} configured successfully!")
-        
+
         # Add README.md to document the bucket
         logger.info("Adding README.md to bucket...")
         readme_content = f"""# Repository Backup Bucket
@@ -381,21 +389,21 @@ git remote set-url origin https://github.com/org/repo.git
 
 ## Management
 This bucket is managed by the repo-backup tool.
-Repository: https://github.com/hypersec-io/infra-repo-backup
+Repository: https://github.com/hypersec-io/repo-backup
 """
-        
+
         try:
             self.s3_client.put_object(
                 Bucket=bucket_name,
                 Key="README.md",
-                Body=readme_content.encode('utf-8'),
+                Body=readme_content.encode("utf-8"),
                 ContentType="text/markdown",
-                ServerSideEncryption="AES256"
+                ServerSideEncryption="AES256",
             )
             logger.info("[OK] README.md added to bucket")
         except Exception as e:
             logger.warning(f"Could not add README.md to bucket: {e}")
-        
+
         return bucket_name
 
     def test_bucket(self, bucket_name: str) -> bool:
@@ -458,7 +466,7 @@ Repository: https://github.com/hypersec-io/infra-repo-backup
         use_profile = profile_name or self.profile or ""
 
         env_content = f"""# AWS Configuration for Repository Backup
-# Generated: {datetime.now().isoformat()}
+# Created: {datetime.now().isoformat()}
 
 # S3 Bucket Configuration
 AWS_S3_BUCKET={bucket_name}
@@ -506,7 +514,7 @@ EXCLUDE_PERSONAL=true
     ) -> tuple:
         """Create IAM user with S3 bucket access and return credentials"""
         if not user_name:
-            user_name = f"backup-repo-s3-{self.get_account_id()[-6:]}"
+            user_name = f"repo-backup-s3-{self.get_account_id()[-6:]}"
 
         policy_name = f"BackupRepoS3Access-{bucket_name}"
 
@@ -568,9 +576,9 @@ EXCLUDE_PERSONAL=true
             policy_response = self.iam_client.create_policy(
                 PolicyName=policy_name,
                 PolicyDocument=json.dumps(policy_document),
-                Description=f"S3 access policy for backup-repo-s3 bucket {bucket_name}",
+                Description=f"S3 access policy for repo-backup-s3 bucket {bucket_name}",
                 Tags=[
-                    {"Key": "Purpose", "Value": "backup-repo-s3"},
+                    {"Key": "Purpose", "Value": "repo-backup-s3"},
                     {"Key": "Bucket", "Value": bucket_name},
                 ],
             )
@@ -589,7 +597,7 @@ EXCLUDE_PERSONAL=true
             self.iam_client.create_user(
                 UserName=user_name,
                 Tags=[
-                    {"Key": "Purpose", "Value": "backup-repo-s3"},
+                    {"Key": "Purpose", "Value": "repo-backup-s3"},
                     {"Key": "Bucket", "Value": bucket_name},
                 ],
             )
@@ -1029,7 +1037,11 @@ class RepoBackupOrchestrator:
             # Backup to S3 if configured
             if self.s3_uploader:
                 method = os.getenv("BACKUP_METHOD", "direct")
+                logger.debug(
+                    f"[DEBUG] Calling S3 upload for {repo.name} with method={method}"
+                )
                 result_s3 = self.s3_uploader.upload_repository(repo, method=method)
+                logger.debug(f"[DEBUG] S3 upload returned: {result_s3} for {repo.name}")
                 results.append(result_s3)
                 if result_s3:
                     destinations.append("S3")
@@ -1499,6 +1511,17 @@ def main():
         help="S3 bucket name (auto-generated if not provided, s3 mode only)",
     )
     s3_group.add_argument(
+        "--bucket",
+        metavar="NAME",
+        help="S3 bucket name for operations (env: AWS_S3_BUCKET, overrides all other bucket settings)",
+    )
+    s3_group.add_argument(
+        "--s3-prefix",
+        default=get_env_default("S3_PREFIX", "repos"),
+        metavar="PREFIX",
+        help="S3 key prefix (env: S3_PREFIX, default: repos)",
+    )
+    s3_group.add_argument(
         "--enable-glacier",
         action="store_true",
         help="Enable Glacier storage transitions for long-term archival (s3 mode only, default: disabled)",
@@ -1593,6 +1616,19 @@ def main():
         metavar="DIR",
         help="Working directory for temporary files (env: WORK_DIR, default: /var/tmp/repo-backup or local_path/tmp/repo-backup)",
     )
+    perf_group.add_argument(
+        "--backup-method",
+        choices=["direct", "archive"],
+        default=get_env_default("BACKUP_METHOD", "direct"),
+        metavar="METHOD",
+        help="Backup method: direct (git bundle, recommended) or archive (tar.gz) (env: BACKUP_METHOD, default: direct)",
+    )
+    perf_group.add_argument(
+        "--exclude-personal",
+        action="store_true",
+        default=get_env_default("EXCLUDE_PERSONAL", "true").lower() == "true",
+        help="Exclude personal repositories (env: EXCLUDE_PERSONAL, default: true)",
+    )
 
     # Logging options
     log_group = parser.add_argument_group("Logging Options")
@@ -1604,9 +1640,9 @@ def main():
     )
     log_group.add_argument(
         "--log-file",
-        default=get_env_default("LOG_FILE", "backup-repo.log"),
+        default=get_env_default("LOG_FILE", "repo-backup.log"),
         metavar="FILE",
-        help="Log file name (env: LOG_FILE, default: backup-repo.log)",
+        help="Log file name (env: LOG_FILE, default: repo-backup.log)",
     )
 
     args = parser.parse_args()
@@ -1661,27 +1697,31 @@ def main():
     if args.mode == "s3" and args.setup:
         # For setup, NEVER use AWS credentials from .env - use current AWS session or explicitly specified profile
         # Priority: --setup-profile > explicitly specified --profile > current AWS CLI session (no profile)
-        
+
         # Clear any AWS_PROFILE from environment to start fresh
         if "AWS_PROFILE" in os.environ:
             del os.environ["AWS_PROFILE"]
-        
+
         if args.setup_profile:
             # User explicitly specified a setup profile
             setup_profile = args.setup_profile
             os.environ["AWS_PROFILE"] = setup_profile
-            logger.info(f"Using AWS profile '{setup_profile}' for S3 setup (from --setup-profile)")
+            logger.info(
+                f"Using AWS profile '{setup_profile}' for S3 setup (from --setup-profile)"
+            )
         elif args.profile and args.profile != get_env_default("AWS_PROFILE"):
             # User explicitly specified --profile (not from .env)
             setup_profile = args.profile
             os.environ["AWS_PROFILE"] = setup_profile
-            logger.info(f"Using AWS profile '{setup_profile}' for S3 setup (from --profile)")
+            logger.info(
+                f"Using AWS profile '{setup_profile}' for S3 setup (from --profile)"
+            )
         else:
             # Use current AWS CLI session (no profile specified)
             setup_profile = None
             # Ensure AWS_PROFILE is not set so boto3 uses current session
             logger.info("Using current AWS CLI session for S3 setup (no profile)")
-        
+
         os.environ["AWS_REGION"] = args.region
         logger.info(f"AWS Region: {args.region}")
         logger.info("")
@@ -1695,7 +1735,9 @@ def main():
         manager = S3BucketManager(profile=setup_profile)
 
         # Create and configure bucket
-        bucket_name = manager.create_and_configure_bucket(args.bucket_name, enable_glacier=args.enable_glacier)
+        bucket_name = manager.create_and_configure_bucket(
+            args.bucket_name, enable_glacier=args.enable_glacier
+        )
 
         # Test bucket
         if manager.test_bucket(bucket_name):
@@ -1708,7 +1750,7 @@ def main():
 
             if access_key_id and secret_key:
                 # Create AWS profile for the service
-                profile_name = f"repo-backup-{bucket_name}"
+                profile_name = f"repo-backup-s3-{bucket_name}"
 
                 if manager.create_aws_profile(
                     profile_name, access_key_id, secret_key, args.region
@@ -1720,7 +1762,9 @@ def main():
                     logger.info("=== Setup Complete ===")
                     logger.info(f"Bucket: {bucket_name}")
                     logger.info(f"Region: {args.region}")
-                    logger.info(f"Glacier: {'Enabled' if args.enable_glacier else 'Disabled (Standard storage only)'}")
+                    logger.info(
+                        f"Glacier: {'Enabled' if args.enable_glacier else 'Disabled (Standard storage only)'}"
+                    )
                     logger.info(f"IAM User: {user_name}")
                     logger.info(f"AWS Profile: {profile_name}")
                     logger.info("")
@@ -1749,12 +1793,30 @@ def main():
         return
 
     # Regular operation mode - create orchestrator based on mode
-    # Set AWS environment if provided for S3 or both modes
+    # Implement standard configuration precedence: CLI args > ENV vars > .env file > defaults
+
+    # Apply command-line overrides with proper precedence
     if args.mode in ["s3", "both"]:
+        # --bucket takes highest precedence for S3 bucket name
+        if args.bucket:
+            os.environ["AWS_S3_BUCKET"] = args.bucket
+            logger.info(f"[CONFIG] Using bucket from --bucket: {args.bucket}")
+        # Fallback to environment variable, then .env file (already loaded)
+
         if args.profile:
             os.environ["AWS_PROFILE"] = args.profile
         if args.region:
             os.environ["AWS_REGION"] = args.region
+        if hasattr(args, "s3_prefix") and args.s3_prefix:
+            os.environ["S3_PREFIX"] = args.s3_prefix
+
+    # Apply backup method override
+    if args.backup_method:
+        os.environ["BACKUP_METHOD"] = args.backup_method
+
+    # Apply exclude personal override
+    if hasattr(args, "exclude_personal"):
+        os.environ["EXCLUDE_PERSONAL"] = str(args.exclude_personal).lower()
 
     # Create orchestrator with appropriate configuration
     orchestrator = RepoBackupOrchestrator(

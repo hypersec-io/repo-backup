@@ -11,7 +11,18 @@ class GitHubManager(RepositoryManager):
     def __init__(self, token: str, exclude_personal: bool = True):
         super().__init__(token, exclude_personal)
         self.client = Github(token)
-        self.user = self.client.get_user()
+
+        # Validate authentication immediately by accessing user data
+        try:
+            self.user = self.client.get_user()
+            # Force authentication check by accessing a property
+            _ = self.user.login  # This will fail if token is invalid
+            self.logger.debug(
+                f"GitHub authentication successful for user: {self.user.login}"
+            )
+        except Exception as e:
+            self.logger.error(f"GitHub authentication failed: {e}")
+            raise ValueError(f"Invalid GitHub token: {e}") from e
 
         # Get organization filters from environment
         include_orgs_env = os.getenv("GITHUB_INCLUDE_ORGS", "")
@@ -92,8 +103,9 @@ class GitHubManager(RepositoryManager):
                     self.logger.warning(
                         f"Could not access organization {org_name}: {e}"
                     )
-        else:
-            # Get all organizations the user is a member of
+
+        # If no specific orgs configured, get all organizations the user is a member of
+        if not self.include_orgs:
             for org in self.user.get_orgs():
                 self.logger.info(
                     f"[CONFIG] Fetching repositories from GitHub organization: {org.login}"
@@ -116,7 +128,16 @@ class GitHubManager(RepositoryManager):
                         )
                     )
 
-        return self.filter_corporate_repos(repos)
+        # Remove duplicates based on owner/name
+        seen = set()
+        unique_repos = []
+        for repo in repos:
+            key = f"{repo.owner}/{repo.name}"
+            if key not in seen:
+                seen.add(key)
+                unique_repos.append(repo)
+
+        return self.filter_corporate_repos(unique_repos)
 
     def is_personal_repo(self, repo) -> bool:
         return repo.owner.login == self.user.login

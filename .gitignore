@@ -68,3 +68,8 @@ Thumbs.db
 *key*
 *.pem
 *.key
+
+# Development files
+CLAUDE.md
+CLAUDE_TEMPLATE.md
+claude_instructions.md
