@@ -136,18 +136,18 @@ cp .env.example .env
 
 2. Edit `.env` with your credentials:
 ```bash
-# Git Platform Tokens (REQUIRED)
-GITHUB_TOKEN=ghp_your_token_here
-GITLAB_TOKEN=glpat_your_token_here  
-BITBUCKET_TOKEN=your-username:app-password  # For Bitbucket Cloud
-# BITBUCKET_TOKEN=your-pat-token  # For Bitbucket Server
+# Git Platform Tokens (REQUIRED - see Authentication section for details)
+GITHUB_TOKEN=ghp_your_token_here         # Classic PAT with repo, read:org scopes
+GITLAB_TOKEN=glpat_your_token_here       # Personal Access Token with read_api, read_repository
+BITBUCKET_TOKEN=ATCTT_your_token_here    # Workspace Access Token (workspace-scoped)
+BITBUCKET_WORKSPACE=workspace-slug       # Required for workspace tokens
 
 # Backup Destinations (choose one or both)
 LOCAL_BACKUP_PATH=/mnt/backups/repo-backup  # For local backups
 AWS_S3_BUCKET=repo-backup-123456789  # Auto-filled by S3 setup
 
 # AWS Configuration (auto-filled by S3 setup)
-AWS_PROFILE=repo-backup-repo-backup-123456789
+AWS_PROFILE=repo-backup-s3-my-bucket-name
 AWS_REGION=us-west-2
 
 # Optional: Performance settings
@@ -157,7 +157,7 @@ BACKUP_METHOD=direct  # or 'archive'
 
 ### Getting Access Tokens
 
-*Note: These instructions are current as of December 2025. Platform interfaces may change - check official documentation if these steps don't match.*
+*Note: These instructions are current as of August 2025. Platform interfaces may change - check official documentation if these steps don't match.*
 
 #### GitHub
 
@@ -168,7 +168,7 @@ BACKUP_METHOD=direct  # or 'archive'
 3. Set expiration (max 1 year, recommend: 90 days)
 4. Select scopes:
    - ✅ `repo` (Full control of private repositories)
-   - Optional: `read:org` if backing up organization repos
+   - ✅ `read:org` (Required for organization repositories)
 5. Click **Generate token**
 6. Copy immediately - token starts with `ghp_`
 7. Store securely - you won't see it again!
@@ -202,52 +202,43 @@ BACKUP_METHOD=direct  # or 'archive'
 
 #### Bitbucket
 
-**⚠️ IMPORTANT: Bitbucket Cloud App Password Deprecation**
-- **September 9, 2025**: No new app passwords can be created
-- **June 9, 2026**: All app passwords stop working
-- Bitbucket is transitioning to Repository Access Tokens and API Tokens
+**⚠️ IMPORTANT: Bitbucket Authentication Changes (August 2025)**
 
-**Bitbucket Cloud (bitbucket.org) - Current Methods:**
+Bitbucket uses **workspace-scoped tokens** unlike GitHub and GitLab which provide organization-wide access. This means:
+- One token per workspace (cannot access multiple workspaces with a single token)
+- Must specify `BITBUCKET_WORKSPACE` in configuration
+- Different from other platforms that can discover all accessible organizations
 
-**Option 1: App Passwords (deprecated but still working until 2026)**
-1. Navigate to: **Personal settings → App passwords**
+**Workspace Access Tokens (Recommended - Current Method)**
+1. Navigate to your workspace settings
+2. Click **Access tokens** under **Security**
+3. Create token with **Repositories: Read** permission
+4. Note: Workspace tokens are a Premium feature
+5. Token starts with `ATCTT` prefix
+6. In `.env` file configure:
+   ```bash
+   BITBUCKET_TOKEN=ATCTT_your_workspace_token_here
+   BITBUCKET_WORKSPACE=your-workspace-slug
+   ```
+
+**App Passwords (Legacy - Being Deprecated)**
+1. Navigate to: **Personal Bitbucket settings → App passwords**
    - Direct URL: https://bitbucket.org/account/settings/app-passwords/
 2. Click **Create app password**
 3. Label: `repo-backup`
 4. Select permissions:
    - Account: ✅ Read
    - Workspace membership: ✅ Read
-   - Projects: ✅ Read
    - Repositories: ✅ Read
 5. Click **Create**
-6. Copy the password immediately
-7. In `.env` file use:
+6. In `.env` file use:
    ```bash
    BITBUCKET_USERNAME=your-username
-   BITBUCKET_APP_PASSWORD=the-app-password
-   # For clone URLs
-   BITBUCKET_TOKEN=your-username:app-password
+   BITBUCKET_TOKEN=your-app-password
    ```
 
-**Option 2: Repository Access Tokens (recommended for specific repos)**
-1. Navigate to your repository → **Repository Settings**
-2. Under **Security**, select **Access tokens**
-3. Click **Create access token**
-4. Configure token:
-   - Name: `repo-backup`
-   - Permissions: ✅ Read
-   - Expiry: As needed
-5. Copy the token
-6. Note: You'll need separate tokens for each repository
-
-**Option 3: Workspace API Tokens (recommended for multiple repos)**
-1. Navigate to: **Settings → Atlassian account settings → Security**
-2. Choose **Create and manage API tokens → Create API token with scopes**
-3. Name the token: `repo-backup`
-4. Set expiry date
-5. Select **Bitbucket** as the app
-6. Assign permissions:
-   - repository:read
+**Why Bitbucket Works Differently:**
+Unlike GitHub (with `read:org` scope) and GitLab (with group discovery), Bitbucket's API architecture requires workspace-specific tokens. This is a platform limitation, not a tool limitation.
    - pullrequest:read (optional)
 7. Create and copy token (shown only once!)
 8. Use with your username as before
@@ -420,14 +411,14 @@ s3://your-bucket/
 ├── repos/
 │   ├── github/
 │   │   ├── organization-name/
-│   │   │   ├── repo1_20240101_120000.bundle
-│   │   │   └── repo2_20240101_120100.bundle
+│   │   │   ├── repo1_20250825_120000.bundle
+│   │   │   └── repo2_20250825_120100.bundle
 │   ├── gitlab/
 │   │   ├── group-name/
-│   │   │   └── project1_20240101_120200.bundle
+│   │   │   └── project1_20250825_120200.bundle
 │   └── bitbucket/
 │       └── workspace-name/
-│           └── repository1_20240101_120300.bundle
+│           └── repository1_20250825_120300.bundle
 ```
 
 ## Restoring Backups
@@ -483,14 +474,14 @@ git clone repo.git restored-repo
 ### Using Cron (Linux/Mac)
 ```bash
 # Add to crontab (runs daily at 2 AM)
-0 2 * * * cd /path/to/repo-backup && ./venv/bin/python backup_repos.py >> backup.log 2>&1
+0 2 * * * cd /path/to/repo-backup && uv run repo-backup s3 --all >> repo-backup.log 2>&1
 ```
 
 ### Using Task Scheduler (Windows)
 1. Create a batch file:
 ```batch
 cd C:\path\to\repo-backup
-venv\Scripts\python.exe backup_repos.py
+uv run repo-backup s3 --all
 ```
 2. Schedule it in Task Scheduler
 
@@ -512,7 +503,7 @@ jobs:
           python-version: '3.9'
       - run: |
           pip install -r requirements.txt
-          python backup_repos.py
+          uv run repo-backup s3 --all
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -579,6 +570,6 @@ MIT License - See LICENSE file for details
 
 For issues or questions:
 1. Check the logs for detailed error messages
-2. Verify configuration in `config/config.yaml`
+2. Verify configuration in `.env` file
 3. Ensure all prerequisites are installed
-4. Review S3 setup in [S3.md](S3.md)
+4. Review the authentication section above for token setup

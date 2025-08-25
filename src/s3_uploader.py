@@ -5,6 +5,7 @@ import subprocess
 import tarfile
 import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import boto3
@@ -54,46 +55,94 @@ class S3Uploader:
             )
             raise
 
-    def upload_repository(self, repo: Repository, method: str = "direct") -> bool:
+    def upload_repository(
+        self, repo: Repository, method: str = "direct", local_backup_path: str = None
+    ) -> bool:
+        print(f"[S3_UPLOADER] upload_repository called for {repo.name}")
         """
         Upload repository to S3
         Args:
             repo: Repository object
             method: 'direct' for streaming or 'archive' for tar.gz
+            local_backup_path: Check this path for existing local backups first
         """
         try:
+            self.logger.info(
+                f"[UPLOAD_REPO] Starting upload for {repo.name} with method={method}, local_backup_path={local_backup_path}"
+            )
+
+            # SMART OPTIMIZATION: Check for existing local backup first
+            if local_backup_path:
+                self.logger.info(
+                    f"[SMART] Checking for existing local backup for {repo.name}"
+                )
+                local_bundle = self._find_local_backup(repo, local_backup_path)
+                if local_bundle:
+                    self.logger.info(
+                        f"[SMART] Found existing local backup for {repo.name}, uploading from local file"
+                    )
+                    return self._upload_existing_bundle(repo, local_bundle)
+                else:
+                    self.logger.info(
+                        f"[SMART] No existing local backup found for {repo.name}"
+                    )
+
+            # Fallback to regular upload methods
+            self.logger.info(f"[UPLOAD_REPO] Using regular upload method: {method}")
             if method == "direct":
+                self.logger.info(
+                    f"[UPLOAD_REPO] Calling _direct_upload for {repo.name}"
+                )
                 return self._direct_upload(repo)
             else:
+                self.logger.info(
+                    f"[UPLOAD_REPO] Calling _archive_upload for {repo.name}"
+                )
                 return self._archive_upload(repo)
 
         except Exception as e:
             self.logger.error(f"Failed to upload {repo.name}: {e}")
+            import traceback
+
+            self.logger.error(f"Exception traceback: {traceback.format_exc()}")
             return False
 
     def _direct_upload(self, repo: Repository) -> bool:
         """Stream repository directly to S3 using git bundle"""
+        print(f"[S3_UPLOADER] _direct_upload called for {repo.name}")
+        print(f"[S3_UPLOADER] repo.platform={repo.platform}, repo.owner={repo.owner}")
         try:
+            self.logger.info(f"[DIRECT_UPLOAD] Starting direct upload for {repo.name}")
+            print(f"[S3_UPLOADER] Point 1: Setting up paths")
             repo_path = os.path.join(self.temp_dir, f"{repo.name}_clone")
             bundle_path = os.path.join(self.temp_dir, f"{repo.name}.bundle")
+            print(
+                f"[S3_UPLOADER] Point 2: repo_path={repo_path}, bundle_path={bundle_path}"
+            )
 
             # For subprocess call, use relative paths since cwd will be set to temp_dir
             relative_repo_path = f"{repo.name}_clone"
 
             # Clone with minimal depth first
+            print(f"[S3_UPLOADER] Point 3: About to clone")
             self.logger.info(f"Cloning {repo.name}...")
             self.logger.debug(f"Repository path: {repo_path}")
             self.logger.debug(f"Bundle path: {bundle_path}")
             self.logger.debug(f"Temp directory: {self.temp_dir}")
             self.logger.debug(f"Working directory: {os.getcwd()}")
+            print(f"[S3_UPLOADER] Point 4: After logging debug info")
 
             clone_cmd = ["git", "clone", "--mirror", repo.clone_url, relative_repo_path]
             self.logger.debug(
                 f"Clone command: git clone --mirror [REDACTED_URL] {relative_repo_path}"
             )
+            print(f"[S3_UPLOADER] Point 5: About to run git clone")
 
             result = subprocess.run(
                 clone_cmd, capture_output=True, text=True, cwd=self.temp_dir
+            )
+            print(
+                f"[S3_UPLOADER] Point 6: Git clone completed with return code: {result.returncode}"
             )
 
             if result.returncode != 0:
@@ -106,19 +155,17 @@ class S3Uploader:
 
             # Fetch LFS objects if LFS is used in the repository
             lfs_check = subprocess.run(
-                ["git", "lfs", "ls-files"],
+                ["git", "--git-dir", repo_path, "lfs", "ls-files"],
                 capture_output=True,
                 text=True,
-                cwd=repo_path,
             )
 
             if lfs_check.returncode == 0 and lfs_check.stdout.strip():
                 self.logger.info(f"Fetching LFS objects for {repo.name}...")
                 lfs_fetch = subprocess.run(
-                    ["git", "lfs", "fetch", "--all"],
+                    ["git", "--git-dir", repo_path, "lfs", "fetch", "--all"],
                     capture_output=True,
                     text=True,
-                    cwd=repo_path,
                 )
                 if lfs_fetch.returncode != 0:
                     self.logger.warning(
@@ -141,20 +188,38 @@ class S3Uploader:
                 self.logger.debug(
                     f"Repository directory contents: {os.listdir(repo_path) if os.path.isdir(repo_path) else 'Not a directory'}"
                 )
-            
-            # Get the last commit date from the repository
-            last_commit_cmd = ["git", "log", "-1", "--format=%cd", "--date=format:%Y%m%d_%H%M%S"]
+
+            # Get the last commit date from the repository (bare repo needs --git-dir)
+            print(f"[S3_UPLOADER] Point 7: Getting last commit date")
+            # For bare repositories, we need to use --git-dir or run from within the repo
+            last_commit_cmd = [
+                "git",
+                "--git-dir",
+                repo_path,
+                "log",
+                "-1",
+                "--format=%cd",
+                "--date=format:%Y%m%d_%H%M%S",
+                "--all",
+            ]
             last_commit_result = subprocess.run(
-                last_commit_cmd, capture_output=True, text=True, cwd=repo_path
+                last_commit_cmd, capture_output=True, text=True
             )
-            
+            print(
+                f"[S3_UPLOADER] Point 8: Last commit result: returncode={last_commit_result.returncode}, stdout='{last_commit_result.stdout.strip()}'"
+            )
+
             if last_commit_result.returncode != 0:
-                # Check if it's an empty repository
+                # Check if it's an empty repository (also use --git-dir for bare repo)
                 check_empty = subprocess.run(
-                    ["git", "rev-list", "-n", "1", "--all"],
-                    capture_output=True, text=True, cwd=repo_path
+                    ["git", "--git-dir", repo_path, "rev-list", "-n", "1", "--all"],
+                    capture_output=True,
+                    text=True,
                 )
                 if check_empty.returncode != 0 or not check_empty.stdout.strip():
+                    print(
+                        f"[S3_UPLOADER] CRITICAL: Treating repo as empty! returncode={check_empty.returncode}, stdout='{check_empty.stdout.strip()}'"
+                    )
                     self.logger.info(
                         f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
                     )
@@ -164,19 +229,24 @@ class S3Uploader:
                 else:
                     self.logger.error(f"Failed to get last commit date for {repo.name}")
                     return False
-            
+
             last_commit_date = last_commit_result.stdout.strip()
             if not last_commit_date:
                 # Empty repo, use current date as fallback
                 last_commit_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
+
             # Check if this version already exists in S3
             s3_key = f"{self.prefix}/{repo.platform}/{repo.owner}/{repo.name}_{last_commit_date}.bundle"
-            
+            self.logger.debug(f"Checking if S3 key already exists: {s3_key}")
+            print(f"[S3_UPLOADER] Checking S3 key: {s3_key}")
+
             try:
                 # Check if object exists in S3
-                response = self.s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
-                file_size = response.get('ContentLength', 0)
+                response = self.s3_client.head_object(
+                    Bucket=self.bucket_name, Key=s3_key
+                )
+                file_size = response.get("ContentLength", 0)
+                print(f"[S3_UPLOADER] File already exists in S3! Size: {file_size}")
                 self.logger.info(
                     f"[SKIP] Backup already exists in S3 for {repo.name} with commit date {last_commit_date}: "
                     f"{s3_key} ({file_size / 1024 / 1024:.2f} MB)"
@@ -187,21 +257,32 @@ class S3Uploader:
                 if os.path.exists(bundle_path):
                     os.remove(bundle_path)
                 return True
-            except (self.s3_client.exceptions.NoSuchKey, self.s3_client.exceptions.ClientError) as e:
+            except (
+                self.s3_client.exceptions.NoSuchKey,
+                self.s3_client.exceptions.ClientError,
+            ) as e:
                 # Object doesn't exist, proceed with backup
+                self.logger.debug(
+                    f"S3 object does not exist (expected), proceeding with backup: {e}"
+                )
                 pass
             except Exception as e:
-                self.logger.debug(f"Error checking S3 object existence: {e}")
+                self.logger.error(f"Error checking S3 object existence: {e}")
 
-            # Create git bundle
+            # Create git bundle (for bare repo, use --git-dir)
             self.logger.info(f"Creating bundle for {repo.name}...")
-            # Use relative bundle path for the git bundle command since cwd is repo_path
-            relative_bundle_path = f"../{repo.name}.bundle"
-            bundle_cmd = ["git", "bundle", "create", relative_bundle_path, "--all"]
+            # For bare repositories, create bundle with absolute path
+            bundle_cmd = [
+                "git",
+                "--git-dir",
+                repo_path,
+                "bundle",
+                "create",
+                bundle_path,
+                "--all",
+            ]
 
-            result = subprocess.run(
-                bundle_cmd, capture_output=True, text=True, cwd=repo_path
-            )
+            result = subprocess.run(bundle_cmd, capture_output=True, text=True)
 
             if result.returncode != 0:
                 # Check if it's an empty repository
@@ -223,33 +304,55 @@ class S3Uploader:
             self.logger.info(
                 f"Uploading {repo.name} to S3 ({file_size / 1024 / 1024:.2f} MB)..."
             )
+            self.logger.debug(
+                f"Upload details - Bundle: {bundle_path}, Bucket: {self.bucket_name}, Key: {s3_key}"
+            )
 
-            with tqdm(
-                total=file_size, unit="B", unit_scale=True, desc=repo.name
-            ) as pbar:
+            try:
+                with tqdm(
+                    total=file_size, unit="B", unit_scale=True, desc=repo.name
+                ) as pbar:
 
-                def upload_callback(bytes_transferred):
-                    pbar.update(bytes_transferred)
+                    def upload_callback(bytes_transferred):
+                        pbar.update(bytes_transferred)
 
-                self.s3_client.upload_file(
-                    bundle_path,
-                    self.bucket_name,
-                    s3_key,
-                    Callback=upload_callback,
-                    ExtraArgs={
-                        "ServerSideEncryption": "AES256",
-                        "Metadata": {
-                            "platform": repo.platform,
-                            "owner": repo.owner,
-                            "is_private": str(repo.is_private),
-                            "default_branch": repo.default_branch or "unknown",
+                    self.s3_client.upload_file(
+                        bundle_path,
+                        self.bucket_name,
+                        s3_key,
+                        Callback=upload_callback,
+                        ExtraArgs={
+                            "ServerSideEncryption": "AES256",
+                            "Metadata": {
+                                "platform": repo.platform,
+                                "owner": repo.owner,
+                                "is_private": str(repo.is_private),
+                                "default_branch": repo.default_branch or "unknown",
+                            },
                         },
-                    },
+                    )
+
+                self.logger.info(
+                    f"Successfully uploaded {repo.name} to s3://{self.bucket_name}/{s3_key}"
                 )
 
-            self.logger.info(
-                f"Successfully uploaded {repo.name} to s3://{self.bucket_name}/{s3_key}"
-            )
+                # Verify upload immediately
+                try:
+                    verify_response = self.s3_client.head_object(
+                        Bucket=self.bucket_name, Key=s3_key
+                    )
+                    uploaded_size = verify_response.get("ContentLength", 0)
+                    self.logger.info(
+                        f"[VERIFY] Upload verified - file exists in S3 with size {uploaded_size} bytes"
+                    )
+                except Exception as verify_error:
+                    self.logger.error(
+                        f"[VERIFY] Upload verification failed: {verify_error}"
+                    )
+
+            except Exception as upload_error:
+                self.logger.error(f"[UPLOAD] S3 upload failed: {upload_error}")
+                raise upload_error
 
             # Cleanup
             if os.path.exists(repo_path):
@@ -385,4 +488,95 @@ class S3Uploader:
 
         except Exception as e:
             self.logger.error(f"S3 connection test failed: {str(e)}")
+            return False
+
+    def _find_local_backup(
+        self, repo: Repository, local_backup_path: str
+    ) -> Optional[str]:
+        """
+        Find existing local backup bundle for repository
+        Args:
+            repo: Repository object
+            local_backup_path: Path to search for local backups
+        Returns:
+            Path to bundle file if found, None otherwise
+        """
+        try:
+            base_path = Path(local_backup_path)
+            # Look for bundles in platform/owner/ structure
+            search_path = base_path / repo.platform / repo.owner
+
+            if not search_path.exists():
+                return None
+
+            # Look for bundle files matching this repository
+            pattern = f"{repo.name}_*.bundle"
+            bundle_files = list(search_path.glob(pattern))
+
+            if not bundle_files:
+                return None
+
+            # Return the most recent bundle (sorted by name, which includes timestamp)
+            latest_bundle = sorted(bundle_files)[-1]
+            self.logger.debug(f"[SMART] Found local bundle: {latest_bundle}")
+            return str(latest_bundle)
+
+        except Exception as e:
+            self.logger.debug(
+                f"[SMART] Error finding local backup for {repo.name}: {e}"
+            )
+            return None
+
+    def _upload_existing_bundle(self, repo: Repository, bundle_path: str) -> bool:
+        """
+        Upload existing bundle file to S3
+        Args:
+            repo: Repository object
+            bundle_path: Path to existing bundle file
+        Returns:
+            Success status
+        """
+        try:
+            # Generate S3 key with current timestamp to avoid duplicates
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            s3_key = f"{self.prefix}/{repo.platform}/{repo.owner}/{repo.name}_{timestamp}.bundle"
+
+            file_size = os.path.getsize(bundle_path)
+            self.logger.info(
+                f"[SMART] Uploading existing bundle for {repo.name} ({file_size / 1024 / 1024:.2f} MB)..."
+            )
+
+            with tqdm(
+                total=file_size, unit="B", unit_scale=True, desc=f"Upload {repo.name}"
+            ) as pbar:
+
+                def upload_callback(bytes_transferred):
+                    pbar.update(bytes_transferred)
+
+                self.s3_client.upload_file(
+                    bundle_path,
+                    self.bucket_name,
+                    s3_key,
+                    Callback=upload_callback,
+                    ExtraArgs={
+                        "ServerSideEncryption": "AES256",
+                        "Metadata": {
+                            "platform": repo.platform,
+                            "owner": repo.owner,
+                            "is_private": str(repo.is_private),
+                            "default_branch": repo.default_branch or "unknown",
+                            "source": "local_backup_optimization",
+                        },
+                    },
+                )
+
+            self.logger.info(
+                f"[SMART] Successfully uploaded {repo.name} from local backup to s3://{self.bucket_name}/{s3_key}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(
+                f"[SMART] Failed to upload existing bundle for {repo.name}: {e}"
+            )
             return False

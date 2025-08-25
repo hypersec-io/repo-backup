@@ -1,4 +1,11 @@
-# Claude Code Configuration Notes
+# Development Configuration Notes
+
+## CRITICAL: Public Repository Requirements
+**⚠️ PUBLIC REPOSITORY**: This project will be published publicly. 
+- **NEVER** include any references to AI/LLM usage in code, comments, or documentation
+- **ALWAYS** write code and documentation as if created by human developers
+- **REMOVE** any language suggesting automated generation or AI assistance
+- **MAINTAIN** professional standards as if this is enterprise-developed software
 
 ## CRITICAL: Always Use Current Information
 **⚠️ RECENCY REQUIREMENT**: This project requires bleeding-edge, up-to-date knowledge. 
@@ -14,7 +21,7 @@
 ## Important Paths
 - **Working directory**: `/var/tmp/repo-backup` (S3 mode) or `local_path/tmp/repo-backup` (local mode)
 - **Local backup path**: `/mnt/hypersec/repo-backup`
-- **Log files**: `./logs/backup-repo.log`
+- **Log files**: `./logs/repo-backup.log`
 - **Config**: `.env` (copy from `.env.example`)
 
 ## Testing Commands
@@ -54,3 +61,24 @@
 - Never use `git add`, `git commit`, `git tag` directly - always use semantic-release
 - CI pipeline includes: formatting, linting, testing, security scanning, building
 - All changes must pass CI before being committed via semantic-release
+
+## Semantic Release Configuration
+- **VERSION file pattern**: Use `VERSION:{version}` not `VERSION:version` in pyproject.toml
+- **Configuration precedence**: CLI args > ENV vars > .env file > defaults
+- **Test releases**: Always use `python -m semantic_release version --noop` before production
+- **Commit format**: `type(scope): description` (e.g., `feat(auth): add user login`)
+- **Version sync**: VERSION file, pyproject.toml, and src/__init__.py are kept in sync
+- **Conventional commits**: feat (minor), fix (patch), BREAKING CHANGE (major)
+
+## Project Path Management
+- **Always detect project root** using `git rev-parse --show-toplevel` on startup
+- **Use pushd/popd** instead of `cd` for safe directory navigation
+- **Validate paths** before operations to prevent errors
+- **Relative paths**: Use paths relative to project root for portability
+- **Error handling**: Handle path detection failures gracefully with clear messages
+
+## Bitbucket Platform Limitations
+- **Workspace-scoped tokens**: Unlike GitHub/GitLab, Bitbucket tokens access ONE workspace only
+- **Cannot discover workspaces**: Must specify `BITBUCKET_WORKSPACE` for workspace tokens
+- **Different architecture**: GitHub has `read:org`, GitLab has group discovery, Bitbucket is workspace-specific
+- **This is a platform limitation, not a tool limitation**
