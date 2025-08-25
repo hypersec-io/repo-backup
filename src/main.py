@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 import yaml
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, TokenRetrievalError
 from dotenv import load_dotenv
 from loguru import logger
 from rich.console import Console
@@ -108,8 +108,43 @@ class S3BucketManager:
 
     def get_account_id(self) -> str:
         """Get AWS account ID"""
-        response = self.sts_client.get_caller_identity()
-        return response["Account"]
+        try:
+            response = self.sts_client.get_caller_identity()
+            return response["Account"]
+        except (ClientError, TokenRetrievalError) as e:
+            error_msg = str(e)
+            if 'ExpiredToken' in error_msg or 'Token has expired' in error_msg:
+                logger.error("")
+                logger.error("❌ AWS session token has expired!")
+                logger.error("")
+                logger.error("Please refresh your AWS credentials:")
+                if self.profile:
+                    logger.error(f"  aws sso login --profile {self.profile}")
+                else:
+                    logger.error("  - For SSO: aws sso login --profile <profile-name>")
+                    logger.error("  - For IAM: aws configure")
+                    logger.error("  - For temporary credentials: export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+                logger.error("")
+                raise SystemExit(1)
+            elif 'InvalidClientTokenId' in error_msg:
+                logger.error("")
+                logger.error("❌ Invalid AWS credentials!")
+                logger.error("")
+                logger.error("Your AWS credentials are not valid. Please check:")
+                logger.error("  - Correct profile is being used")
+                logger.error("  - Credentials are not expired")
+                logger.error("  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct")
+                logger.error("")
+                raise SystemExit(1)
+            elif 'AccessDenied' in error_msg:
+                logger.error("")
+                logger.error("❌ Access Denied!")
+                logger.error("")
+                logger.error("Your AWS user/role lacks required permissions.")
+                logger.error("See README.md for required permissions for S3 setup.")
+                logger.error("")
+                raise SystemExit(1)
+            raise
 
     def generate_bucket_name(self, prefix: str = "repo-backup") -> str:
         """Generate unique bucket name using account ID"""
@@ -1554,8 +1589,12 @@ def main():
 
     # S3 Setup mode
     if args.mode == "s3" and args.setup:
-        # For setup, NEVER use AWS credentials from .env - use current user or specified profile
-        # Priority: --setup-profile > explicitly specified --profile > default AWS credentials (NOT .env)
+        # For setup, NEVER use AWS credentials from .env - use current AWS session or explicitly specified profile
+        # Priority: --setup-profile > explicitly specified --profile > current AWS CLI session (no profile)
+        
+        # Clear any AWS_PROFILE from environment to start fresh
+        if "AWS_PROFILE" in os.environ:
+            del os.environ["AWS_PROFILE"]
         
         if args.setup_profile:
             # User explicitly specified a setup profile
@@ -1568,11 +1607,10 @@ def main():
             os.environ["AWS_PROFILE"] = setup_profile
             logger.info(f"Using AWS profile '{setup_profile}' for S3 setup (from --profile)")
         else:
-            # Use default AWS credentials (not .env)
+            # Use current AWS CLI session (no profile specified)
             setup_profile = None
-            if "AWS_PROFILE" in os.environ:
-                del os.environ["AWS_PROFILE"]
-            logger.info("Using default AWS credentials for S3 setup (ignoring .env)")
+            # Ensure AWS_PROFILE is not set so boto3 uses current session
+            logger.info("Using current AWS CLI session for S3 setup (no profile)")
         
         os.environ["AWS_REGION"] = args.region
         logger.info(f"AWS Region: {args.region}")

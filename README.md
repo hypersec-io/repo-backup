@@ -91,11 +91,13 @@ The AWS user/role running `--setup` must have these permissions:
 #### Running Setup
 
 ```bash
-# Basic setup (uses your default AWS credentials)
+# Basic setup (uses your current AWS CLI session)
 repo-backup s3 --setup
 
 # Setup with specific AWS profile (NOT from .env)
 repo-backup s3 --setup --setup-profile admin-profile
+# OR
+repo-backup s3 --setup --profile admin-profile
 
 # With Glacier for cost-optimized long-term storage
 repo-backup s3 --setup --enable-glacier
@@ -105,9 +107,9 @@ repo-backup s3 --setup --bucket-name my-backup-bucket --region us-east-1
 ```
 
 **Note:** The `--setup` command intentionally ignores AWS credentials in `.env` to prevent using the limited backup user for administrative tasks. It uses:
-1. `--setup-profile` if specified
+1. `--setup-profile` if specified (highest priority)
 2. Explicitly specified `--profile` (not from .env)
-3. Your default AWS credentials
+3. Your current AWS CLI session (no profile - uses AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or IAM role)
 
 This automated setup will:
 - ✅ Create S3 bucket with unique name (or use your custom name)
