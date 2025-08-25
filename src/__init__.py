@@ -8,7 +8,7 @@ MIT License
 Copyright (c) 2025 HyperSec
 """
 
-__version__ = "1.0.3"
+__version__ = "1.1.0"
 __author__ = "Derek"
 __license__ = "MIT"
 __description__ = "Enterprise repository backup tool that syncs corporate Git repositories to local storage or AWS S3"
