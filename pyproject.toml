@@ -73,7 +73,7 @@ packages = ["src"]
 [tool.semantic_release]
 version_variables = [
     "src/__init__.py:__version__",
-    "VERSION"
+    "VERSION:{version}"
 ]
 version_toml = [
     "pyproject.toml:project.version"
