@@ -4,7 +4,7 @@ version = "1.2.1"
 description = "Enterprise repository backup tool that syncs corporate Git repositories to local storage or AWS S3"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 authors = [
     {name = "Derek", email = "noreply@hypersec.io"}
 ]
@@ -13,7 +13,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: System Administrators",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
