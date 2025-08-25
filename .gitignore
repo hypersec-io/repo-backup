@@ -37,9 +37,11 @@ uv.lock
 *.swo
 *~
 
-# Project specific
+# Project specific - SECURITY CRITICAL
 .env
 .env.local
+.env.production
+.env.*.local
 !.env.example
 *.log
 logs/

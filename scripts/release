@@ -94,7 +94,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# Step 5: Create semantic release
+# Step 5: Create semantic release (using CI token from .env)
 run_step "Create Semantic Release" "uv run semantic-release version"
 
 # Step 6: Show release summary
