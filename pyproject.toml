@@ -1,6 +1,6 @@
 [project]
 name = "repo-backup"
-version = "2.0.0"
+version = "2.0.1"
 description = "Enterprise repository backup tool that syncs corporate Git repositories to local storage or AWS S3"
 readme = "README.md"
 requires-python = ">=3.9"
