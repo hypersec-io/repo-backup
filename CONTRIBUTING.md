@@ -197,4 +197,4 @@ uv run semantic-release version
 - Create a new issue for bugs or feature requests
 - Follow the conventional commit format for all contributions
 
-Thank you for contributing to repo-backup! 🚀
+Thank you for contributing to repo-backup!

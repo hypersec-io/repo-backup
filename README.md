@@ -5,7 +5,7 @@ Enterprise repository backup tool for GitHub, GitLab, and Bitbucket
 [![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-Enterprise repository backup tool that syncs corporate Git repositories from GitHub, GitLab, and Bitbucket to local storage or AWS S3 with professional security and lifecycle management.
+Enterprise repository backup tool that syncs corporate Git repositories from GitHub, GitLab, and Bitbucket to local storage or AWS S3.
 
 ## Features
 
@@ -53,42 +53,16 @@ uv run repo-backup local /tmp/test-backup --test
 
 ### Step 1: S3 Bucket Setup (For S3 Backups)
 
-**⚠️ IMPORTANT: Setup requires AWS admin permissions - uses YOUR credentials, NOT .env**
+**NOTE: See [AWS.md](AWS.md) for comprehensive AWS configuration guide**
 
-#### Required AWS Permissions for Setup User
+The setup process requires specific AWS permissions to create infrastructure (S3 bucket, IAM user, policies). This does **NOT** require AWS administrator access - only permissions to create S3 buckets and IAM users.
 
-The AWS user/role running `--setup` must have these permissions:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:CreateBucket",
-        "s3:PutBucketVersioning",
-        "s3:PutBucketEncryption",
-        "s3:PutBucketPublicAccessBlock",
-        "s3:PutBucketLifecycleConfiguration",
-        "s3:PutBucketTagging",
-        "s3:PutBucketPolicy",
-        "s3:GetBucketLocation",
-        "s3:ListBucket",
-        "iam:CreateUser",
-        "iam:CreateAccessKey",
-        "iam:PutUserPolicy",
-        "iam:AttachUserPolicy",
-        "iam:CreatePolicy",
-        "iam:TagUser",
-        "sts:GetCallerIdentity"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+For detailed information, see:
+- [AWS.md - For Cloud Administrators](AWS.md#for-cloud-administrators) - Set up permissions for users
+- [AWS.md - Permission Details](AWS.md#permission-details) - Exact permissions required
+- [AWS.md - Security Best Practices](AWS.md#security-best-practices) - IAM roles, encryption, MFA
 
-#### Running Setup
+#### Quick Setup
 
 ```bash
 # Basic setup (uses your current AWS CLI session)
@@ -106,21 +80,18 @@ repo-backup s3 --setup --enable-glacier
 repo-backup s3 --setup --bucket-name my-backup-bucket --region us-east-1
 ```
 
-**Note:** The `--setup` command intentionally ignores AWS credentials in `.env` to prevent using the limited backup user for administrative tasks. It uses:
-1. `--setup-profile` if specified (highest priority)
-2. Explicitly specified `--profile` (not from .env)
-3. Your current AWS CLI session (no profile - uses AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or IAM role)
+**Note:** The `--setup` command uses your AWS credentials (NOT `.env` credentials) to create infrastructure. See [AWS.md - Setup Permissions](AWS.md#setup-permissions-required-once) for details on required permissions.
 
 This automated setup will:
-- ✅ Create S3 bucket with unique name (or use your custom name)
-- ✅ Enable versioning for backup history
-- ✅ Configure encryption (AES256)
-- ✅ Block all public access
-- ✅ Set up lifecycle policies (Standard or with Glacier)
-- ✅ Create dedicated IAM user with minimal permissions
-- ✅ Configure AWS CLI profile
-- ✅ Generate `.env` file with all settings
-- ✅ Test bucket access and permissions
+- Create S3 bucket with unique name (or use your custom name)
+- Enable versioning for backup history
+- Configure encryption (AES256)
+- Block all public access
+- Set up lifecycle policies (Standard or with Glacier)
+- Create dedicated IAM user with minimal permissions
+- Configure AWS CLI profile
+- Generate `.env` file with all settings
+- Test bucket access and permissions
 
 **After setup completes:**
 - Note the bucket name, IAM user, and AWS profile displayed
@@ -167,8 +138,8 @@ BACKUP_METHOD=direct  # or 'archive'
 2. Click **Generate new token → Generate new token (classic)**
 3. Set expiration (max 1 year, recommend: 90 days)
 4. Select scopes:
-   - ✅ `repo` (Full control of private repositories)
-   - ✅ `read:org` (Required for organization repositories)
+   - `repo` (Full control of private repositories)
+   - `read:org` (Required for organization repositories)
 5. Click **Generate token**
 6. Copy immediately - token starts with `ghp_`
 7. Store securely - you won't see it again!
@@ -182,9 +153,9 @@ BACKUP_METHOD=direct  # or 'archive'
    - Expiration: Up to 1 year
    - Repository access: Select specific repos or "All repositories"
 4. Set repository permissions:
-   - Contents: ✅ Read
-   - Metadata: ✅ Read (automatically selected)
-   - Actions: ✅ Read (if backing up workflows)
+   - Contents: Read
+   - Metadata: Read (automatically selected)
+   - Actions: Read (if backing up workflows)
 5. Click **Generate token**
 6. Copy the token - starts with `github_pat_`
 
@@ -195,14 +166,14 @@ BACKUP_METHOD=direct  # or 'archive'
    - Token name: `repo-backup`
    - Expiration date: Set as needed
 3. Select scopes:
-   - ✅ `read_repository`
-   - ✅ `read_api` (for group/project listing)
+   - `read_repository`
+   - `read_api` (for group/project listing)
 4. Click **Create personal access token**
 5. Copy the token - starts with `glpat-`
 
 #### Bitbucket
 
-**⚠️ IMPORTANT: Bitbucket Authentication Changes (August 2025)**
+**IMPORTANT: Bitbucket Authentication Changes (August 2025)**
 
 Bitbucket uses **workspace-scoped tokens** unlike GitHub and GitLab which provide organization-wide access. This means:
 - One token per workspace (cannot access multiple workspaces with a single token)
@@ -227,9 +198,9 @@ Bitbucket uses **workspace-scoped tokens** unlike GitHub and GitLab which provid
 2. Click **Create app password**
 3. Label: `repo-backup`
 4. Select permissions:
-   - Account: ✅ Read
-   - Workspace membership: ✅ Read
-   - Repositories: ✅ Read
+   - Account: Read
+   - Workspace membership: Read
+   - Repositories: Read
 5. Click **Create**
 6. In `.env` file use:
    ```bash
@@ -251,8 +222,8 @@ Unlike GitHub (with `read:org` scope) and GitLab (with group discovery), Bitbuck
    - Token name: `repo-backup`
    - Expiry: As needed
 4. Permissions:
-   - Repository: ✅ Read
-   - Project: ✅ Read
+   - Repository: Read
+   - Project: Read
 5. Click **Create**
 6. Copy the HTTP access token
 7. In `.env` file:
@@ -365,44 +336,16 @@ repo-backup --verify-backup /path    # Check backup integrity
 - Contains the bare git repository
 - Extract with: `tar -xzf repo.tar.gz`
 
-## S3 Setup
+## S3 Configuration
 
-### Automated S3 Configuration
+**NOTE: For detailed AWS setup instructions, see [AWS.md](AWS.md)**
 
-The tool can automatically create and configure an S3 bucket with proper security settings:
+The tool automatically creates and configures S3 buckets with proper security settings. See the [Initial Setup](#initial-setup) section for quick start, or [AWS.md](AWS.md) for:
 
-```bash
-# Basic setup (Standard storage only, no Glacier)
-repo-backup s3 --setup
-
-# Setup with Glacier enabled for long-term archival
-repo-backup s3 --setup --enable-glacier
-
-# Setup with custom bucket name
-repo-backup s3 --setup --bucket-name my-backup-bucket
-
-# Setup with specific region
-repo-backup s3 --setup --region eu-west-1
-```
-
-**Storage Options:**
-- **Standard (default)**: Fast access, higher cost
-  - Transitions to Standard-IA after 90 days
-  - Old versions expire after 365 days
-  
-- **With Glacier** (`--enable-glacier`): Cost-optimized for long-term storage
-  - Transitions to Standard-IA after 30 days
-  - Transitions to Glacier IR after 90 days
-  - Transitions to Deep Archive after 180 days
-  - Old versions move to Glacier after 7 days
-
-The setup process will:
-1. Create an S3 bucket with versioning enabled
-2. Configure lifecycle policies based on your storage preference
-3. Apply security settings (encryption, block public access)
-4. Create a dedicated IAM user with minimal permissions
-5. Configure AWS CLI profile
-6. Generate `.env` file with configuration
+- **Administrator Guide**: [Setting up permissions for users](AWS.md#for-cloud-administrators)
+- **User Guide**: [Running setup and daily backups](AWS.md#for-backup-tool-users)
+- **Security**: [IAM roles, encryption, MFA, cost optimization](AWS.md#security-best-practices)
+- **Troubleshooting**: [Common issues and solutions](AWS.md#troubleshooting)
 
 ## S3 Structure
 
@@ -520,10 +463,7 @@ export AWS_SECRET_ACCESS_KEY=...
 ```
 
 3. **Rotate tokens** regularly
-4. Use **IAM roles** when running on EC2
-5. **Encrypt** S3 bucket with SSE-S3 or SSE-KMS
-6. Enable **versioning** on S3 bucket
-7. Set up **lifecycle policies** to manage old backups
+4. **AWS Security**: See [AWS.md - Security Best Practices](AWS.md#security-best-practices) for IAM roles, encryption, MFA, and cost optimization
 
 ## Troubleshooting
 
@@ -533,8 +473,8 @@ export AWS_SECRET_ACCESS_KEY=...
 - Ensure network access to git platforms
 
 ### S3 Upload Failures
-- Verify AWS credentials
-- Check S3 bucket permissions
+- See [AWS.md - Troubleshooting](AWS.md#troubleshooting) for detailed AWS issue resolution
+- Verify AWS credentials and permissions
 - Ensure bucket exists and is accessible
 
 ### Large Repository Issues
@@ -568,7 +508,7 @@ Apache License 2.0 - See LICENSE file for details
 
 ## Security
 
-**⚠️ IMPORTANT: Token Security**
+**IMPORTANT: Token Security**
 - Never commit real tokens to version control
 - Use `.env.local` for your actual tokens (automatically ignored by git)
 - The `.env` file in the repository contains only placeholder values

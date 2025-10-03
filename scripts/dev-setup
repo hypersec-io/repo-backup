@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}🛠️  Setting up repo-backup development environment${NC}"
+echo -e "${BLUE}Setting up repo-backup development environment${NC}"
 echo "=================================================="
 
 # Check for required tools
@@ -20,9 +20,9 @@ check_tool() {
     local install_hint="$2"
     
     if command -v "$tool" >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ $tool is installed${NC}"
+        echo -e "${GREEN}OK $tool is installed${NC}"
     else
-        echo -e "${RED}❌ $tool is not installed${NC}"
+        echo -e "${RED}FAIL $tool is not installed${NC}"
         if [[ -n "$install_hint" ]]; then
             echo -e "${YELLOW}   Install with: $install_hint${NC}"
         fi
@@ -30,13 +30,13 @@ check_tool() {
     fi
 }
 
-echo -e "\n${YELLOW}🔍 Checking required tools...${NC}"
+echo -e "\n${YELLOW}Checking required tools...${NC}"
 check_tool "python3" "apt install python3 python3-pip"
 check_tool "git" "apt install git"
 check_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
 # Setup virtual environment and dependencies
-echo -e "\n${YELLOW}📦 Setting up Python environment...${NC}"
+echo -e "\n${YELLOW}Setting up Python environment...${NC}"
 if [[ ! -d ".venv" ]]; then
     echo "Creating virtual environment..."
     uv venv
@@ -46,7 +46,7 @@ echo "Installing all dependencies..."
 uv sync --extra dev --extra test
 
 # Setup git hooks (optional)
-echo -e "\n${YELLOW}⚙️  Setting up development tools...${NC}"
+echo -e "\n${YELLOW}Setting up development tools...${NC}"
 
 # Create git commit template
 if [[ ! -f ".gitmessage" ]]; then
@@ -77,21 +77,21 @@ if [[ ! -f ".gitmessage" ]]; then
 EOF
 
     git config commit.template .gitmessage
-    echo "✅ Git commit template configured"
+    echo "OK Git commit template configured"
 fi
 
 # Test the setup
-echo -e "\n${YELLOW}🧪 Testing development setup...${NC}"
+echo -e "\n${YELLOW}Testing development setup...${NC}"
 echo "Running basic import test..."
-if uv run python -c "from src.main import RepoBackupOrchestrator; print('✅ Core imports work')"; then
-    echo -e "${GREEN}✅ Development setup successful!${NC}"
+if uv run python -c "from src.main import RepoBackupOrchestrator; print('OK Core imports work')"; then
+    echo -e "${GREEN}OK Development setup successful!${NC}"
 else
-    echo -e "${RED}❌ Development setup failed${NC}"
+    echo -e "${RED}FAIL Development setup failed${NC}"
     exit 1
 fi
 
 # Show next steps
-echo -e "\n${GREEN}🎉 Development environment ready!${NC}"
+echo -e "\n${GREEN}SUCCESS: Development environment ready!${NC}"
 echo "=================================================="
 echo ""
 echo "Available commands:"

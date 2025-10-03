@@ -37,6 +37,17 @@ uv.lock
 *.swo
 *~
 
+# AI Coding Assistants
+.claude/
+CLAUDE.md
+CLAUDE_TEMPLATE.md
+claude_instructions.md
+.cursor/
+.cursorrules
+.openai/
+.copilot/
+.aider*
+
 # Project specific - SECURITY CRITICAL
 .env
 .env.local
@@ -70,8 +81,3 @@ Thumbs.db
 *key*
 *.pem
 *.key
-
-# Development files
-CLAUDE.md
-CLAUDE_TEMPLATE.md
-claude_instructions.md
