@@ -129,7 +129,7 @@ class S3BucketManager:
             error_msg = str(e)
             if "ExpiredToken" in error_msg or "Token has expired" in error_msg:
                 logger.error("")
-                logger.error("❌ AWS session token has expired!")
+                logger.error("ERROR: AWS session token has expired!")
                 logger.error("")
                 logger.error("Please refresh your AWS credentials:")
                 if self.profile:
@@ -144,7 +144,7 @@ class S3BucketManager:
                 raise SystemExit(1)
             elif "InvalidClientTokenId" in error_msg:
                 logger.error("")
-                logger.error("❌ Invalid AWS credentials!")
+                logger.error("ERROR: Invalid AWS credentials!")
                 logger.error("")
                 logger.error("Your AWS credentials are not valid. Please check:")
                 logger.error("  - Correct profile is being used")
@@ -156,7 +156,7 @@ class S3BucketManager:
                 raise SystemExit(1)
             elif "AccessDenied" in error_msg:
                 logger.error("")
-                logger.error("❌ Access Denied!")
+                logger.error("ERROR: Access Denied!")
                 logger.error("")
                 logger.error("Your AWS user/role lacks required permissions.")
                 logger.error("See README.md for required permissions for S3 setup.")
@@ -1174,7 +1174,7 @@ class RepoBackupOrchestrator:
                         successful += 1
                     else:
                         failed += 1
-                    pbar.set_postfix({"✓": successful, "❌": failed})
+                    pbar.set_postfix({"OK": successful, "FAIL": failed})
 
         # Cleanup
         if self.s3_uploader:
@@ -1240,16 +1240,16 @@ class RepoBackupOrchestrator:
                 ]  # Get just one repo for testing
                 if test_repos:
                     logger.info(
-                        f"[HEALTH] ✅ {platform.upper()}: Authentication OK, found {len(manager.get_repositories())} repositories"
+                        f"[HEALTH] OK {platform.upper()}: Authentication OK, found {len(manager.get_repositories())} repositories"
                     )
                     passed_checks += 1
                 else:
                     logger.warning(
-                        f"[HEALTH] ⚠️ {platform.upper()}: Authentication OK but no repositories found"
+                        f"[HEALTH] WARNING {platform.upper()}: Authentication OK but no repositories found"
                     )
                     passed_checks += 1
             except Exception as e:
-                logger.error(f"[HEALTH] ❌ {platform.upper()}: {str(e)}")
+                logger.error(f"[HEALTH] FAIL {platform.upper()}: {str(e)}")
 
         # Test S3 connectivity if configured
         if self.s3_uploader:
@@ -1257,12 +1257,14 @@ class RepoBackupOrchestrator:
             logger.info("[HEALTH] Checking S3 connectivity...")
             try:
                 if self.s3_uploader.test_connection():
-                    logger.info("[HEALTH] ✅ S3: Connection and permissions OK")
+                    logger.info("[HEALTH] OK S3: Connection and permissions OK")
                     passed_checks += 1
                 else:
-                    logger.error("[HEALTH] ❌ S3: Connection or permission test failed")
+                    logger.error(
+                        "[HEALTH] FAIL S3: Connection or permission test failed"
+                    )
             except Exception as e:
-                logger.error(f"[HEALTH] ❌ S3: {str(e)}")
+                logger.error(f"[HEALTH] FAIL S3: {str(e)}")
 
         # Summary
         logger.info("=" * 50)
@@ -1270,10 +1272,10 @@ class RepoBackupOrchestrator:
             f"[HEALTH] Health check complete: {passed_checks}/{total_checks} services healthy"
         )
         if passed_checks == total_checks:
-            logger.info("[HEALTH] All systems operational ✅")
+            logger.info("[HEALTH] All systems operational OK")
         else:
             logger.error(
-                f"[HEALTH] {total_checks - passed_checks} service(s) have issues ❌"
+                f"[HEALTH] {total_checks - passed_checks} service(s) have issues FAIL"
             )
             sys.exit(1)
 
@@ -1289,28 +1291,28 @@ class RepoBackupOrchestrator:
         if not env_file.exists():
             issues.append("Missing .env file")
         else:
-            logger.info("[CONFIG] ✅ .env file exists")
+            logger.info("[CONFIG] OK .env file exists")
 
         # Check required platform tokens
         platforms_found = 0
 
         github_token = os.getenv("GITHUB_TOKEN")
         if github_token and not github_token.startswith("ghp_your"):
-            logger.info("[CONFIG] ✅ GitHub token configured")
+            logger.info("[CONFIG] OK GitHub token configured")
             platforms_found += 1
         else:
             warnings.append("GitHub token not configured")
 
         gitlab_token = os.getenv("GITLAB_TOKEN")
         if gitlab_token and not gitlab_token.startswith("glpat_your"):
-            logger.info("[CONFIG] ✅ GitLab token configured")
+            logger.info("[CONFIG] OK GitLab token configured")
             platforms_found += 1
         else:
             warnings.append("GitLab token not configured")
 
         bitbucket_token = os.getenv("BITBUCKET_TOKEN")
         if bitbucket_token and not bitbucket_token.startswith("your_token_here"):
-            logger.info("[CONFIG] ✅ Bitbucket token configured")
+            logger.info("[CONFIG] OK Bitbucket token configured")
             platforms_found += 1
         else:
             warnings.append("Bitbucket token not configured")
@@ -1321,7 +1323,7 @@ class RepoBackupOrchestrator:
         # Check AWS configuration
         aws_profile = os.getenv("AWS_PROFILE")
         if aws_profile:
-            logger.info(f"[CONFIG] ✅ AWS profile configured: {aws_profile}")
+            logger.info(f"[CONFIG] OK AWS profile configured: {aws_profile}")
             # Try to validate AWS credentials
             try:
                 import boto3
@@ -1330,7 +1332,7 @@ class RepoBackupOrchestrator:
                 sts = session.client("sts")
                 identity = sts.get_caller_identity()
                 logger.info(
-                    f"[CONFIG] ✅ AWS credentials valid for: {identity.get('Arn', 'unknown')}"
+                    f"[CONFIG] OK AWS credentials valid for: {identity.get('Arn', 'unknown')}"
                 )
             except Exception as e:
                 issues.append(f"AWS credentials invalid: {str(e)}")
@@ -1340,7 +1342,7 @@ class RepoBackupOrchestrator:
         # Check working directories
         work_dir = os.getenv("WORK_DIR")
         if work_dir and Path(work_dir).exists():
-            logger.info(f"[CONFIG] ✅ Working directory exists: {work_dir}")
+            logger.info(f"[CONFIG] OK Working directory exists: {work_dir}")
         elif work_dir:
             issues.append(f"Working directory does not exist: {work_dir}")
 
@@ -1349,19 +1351,19 @@ class RepoBackupOrchestrator:
         if issues:
             logger.error("[CONFIG] Configuration validation failed:")
             for issue in issues:
-                logger.error(f"[CONFIG] ❌ {issue}")
+                logger.error(f"[CONFIG] FAIL {issue}")
 
         if warnings:
             logger.warning("[CONFIG] Configuration warnings:")
             for warning in warnings:
-                logger.warning(f"[CONFIG] ⚠️ {warning}")
+                logger.warning(f"[CONFIG] WARNING {warning}")
 
         if not issues and not warnings:
-            logger.info("[CONFIG] ✅ All configuration checks passed")
+            logger.info("[CONFIG] OK All configuration checks passed")
         elif not issues:
-            logger.info("[CONFIG] ✅ Configuration valid with warnings")
+            logger.info("[CONFIG] OK Configuration valid with warnings")
         else:
-            logger.error("[CONFIG] ❌ Configuration validation failed")
+            logger.error("[CONFIG] FAIL Configuration validation failed")
             sys.exit(1)
 
     def verify_backup_integrity(self, backup_path: str):
@@ -1370,7 +1372,7 @@ class RepoBackupOrchestrator:
 
         backup_path = Path(backup_path)
         if not backup_path.exists():
-            logger.error(f"[VERIFY] ❌ Backup path does not exist: {backup_path}")
+            logger.error(f"[VERIFY] FAIL Backup path does not exist: {backup_path}")
             sys.exit(1)
 
         verified = 0
@@ -1395,18 +1397,18 @@ class RepoBackupOrchestrator:
                     if result.returncode == 0:
                         verified += 1
                         logger.debug(
-                            f"[VERIFY] ✅ {bundle_file.name}: Valid git bundle"
+                            f"[VERIFY] OK {bundle_file.name}: Valid git bundle"
                         )
                     else:
                         failed += 1
                         logger.error(
-                            f"[VERIFY] ❌ {bundle_file.name}: Invalid git bundle - {result.stderr.strip()}"
+                            f"[VERIFY] FAIL {bundle_file.name}: Invalid git bundle - {result.stderr.strip()}"
                         )
 
                 except Exception as e:
                     failed += 1
                     logger.error(
-                        f"[VERIFY] ❌ {bundle_file.name}: Verification error - {str(e)}"
+                        f"[VERIFY] FAIL {bundle_file.name}: Verification error - {str(e)}"
                     )
 
         elif backup_path.is_file() and backup_path.suffix == ".bundle":
@@ -1422,20 +1424,20 @@ class RepoBackupOrchestrator:
 
                 if result.returncode == 0:
                     verified = 1
-                    logger.info(f"[VERIFY] ✅ Bundle file is valid")
+                    logger.info(f"[VERIFY] OK Bundle file is valid")
                 else:
                     failed = 1
                     logger.error(
-                        f"[VERIFY] ❌ Bundle file is invalid: {result.stderr.strip()}"
+                        f"[VERIFY] FAIL Bundle file is invalid: {result.stderr.strip()}"
                     )
 
             except Exception as e:
                 failed = 1
-                logger.error(f"[VERIFY] ❌ Verification error: {str(e)}")
+                logger.error(f"[VERIFY] FAIL Verification error: {str(e)}")
 
         else:
             logger.error(
-                f"[VERIFY] ❌ Invalid backup path (not a directory or .bundle file)"
+                f"[VERIFY] FAIL Invalid backup path (not a directory or .bundle file)"
             )
             sys.exit(1)
 
@@ -1446,9 +1448,9 @@ class RepoBackupOrchestrator:
             f"[VERIFY] Verification complete: {verified}/{total} backups verified"
         )
         if failed == 0:
-            logger.info("[VERIFY] ✅ All backups are valid")
+            logger.info("[VERIFY] OK All backups are valid")
         else:
-            logger.error(f"[VERIFY] ❌ {failed} backup(s) failed verification")
+            logger.error(f"[VERIFY] FAIL {failed} backup(s) failed verification")
             sys.exit(1)
 
 

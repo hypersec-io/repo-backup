@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}🏷️  Running Semantic Release Pipeline${NC}"
+echo -e "${BLUE}Running Semantic Release Pipeline${NC}"
 echo "=============================================="
 
 # Function to run commands with status output
@@ -19,26 +19,26 @@ run_step() {
     local step_name="$1"
     local command="$2"
     
-    echo -e "\n${YELLOW}📋 Step: $step_name${NC}"
+    echo -e "\n${YELLOW}Step: $step_name${NC}"
     echo "Command: $command"
     
     if eval "$command"; then
-        echo -e "${GREEN}✅ $step_name - PASSED${NC}"
+        echo -e "${GREEN}OK $step_name - PASSED${NC}"
     else
-        echo -e "${RED}❌ $step_name - FAILED${NC}"
+        echo -e "${RED}FAIL $step_name - FAILED${NC}"
         exit 1
     fi
 }
 
 # Check if we're in the right directory
 if [[ ! -f "pyproject.toml" ]]; then
-    echo -e "${RED}❌ Error: Not in repo-backup project directory${NC}"
+    echo -e "${RED}ERROR: Not in repo-backup project directory${NC}"
     exit 1
 fi
 
 # Check if git repository is clean
 if [[ -n $(git status --porcelain) ]]; then
-    echo -e "${RED}❌ Error: Git working directory is not clean${NC}"
+    echo -e "${RED}ERROR: Git working directory is not clean${NC}"
     echo "Please commit all changes before running semantic release"
     git status --short
     exit 1
@@ -47,7 +47,7 @@ fi
 # Check if we're on main branch
 current_branch=$(git branch --show-current)
 if [[ "$current_branch" != "main" && "$current_branch" != "master" ]]; then
-    echo -e "${YELLOW}⚠️  Warning: Not on main/master branch (currently on: $current_branch)${NC}"
+    echo -e "${YELLOW}WARNING: Not on main/master branch (currently on: $current_branch)${NC}"
     read -p "Continue anyway? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -61,16 +61,16 @@ echo -e "${BLUE}Running full CI pipeline before release...${NC}"
 if [[ -x "./scripts/ci" ]]; then
     ./scripts/ci
 else
-    echo -e "${RED}❌ Error: scripts/ci not found or not executable${NC}"
+    echo -e "${RED}ERROR: scripts/ci not found or not executable${NC}"
     exit 1
 fi
 
 # Step 2: Check what the next version would be
-echo -e "\n${YELLOW}🔍 Checking next semantic version...${NC}"
+echo -e "\n${YELLOW}Checking next semantic version...${NC}"
 next_version=$(uv run semantic-release version --print 2>/dev/null || echo "")
 
 if [[ -z "$next_version" ]]; then
-    echo -e "${YELLOW}ℹ️  No new version to release (no conventional commits since last release)${NC}"
+    echo -e "${YELLOW}INFO: No new version to release (no conventional commits since last release)${NC}"
     echo "Make sure you have commits with conventional commit format:"
     echo "  - feat: for new features (minor version bump)"
     echo "  - fix: for bug fixes (patch version bump)" 
@@ -98,7 +98,7 @@ fi
 run_step "Create Semantic Release" "uv run semantic-release version"
 
 # Step 6: Show release summary
-echo -e "\n${GREEN}🎉 Release completed successfully!${NC}"
+echo -e "\n${GREEN}SUCCESS: Release completed successfully!${NC}"
 echo "=============================================="
 
 # Get the latest tag (should be the one we just created)

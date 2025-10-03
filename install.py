@@ -129,7 +129,7 @@ def test_installation():
     print("Testing installation...")
     result = run_command(['repo-backup', '--help'], check=False)
     if result.returncode == 0:
-        print("✓ Installation test passed!")
+        print("OK Installation test passed!")
         return True
     else:
         print("✗ Installation test failed!")
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     
     # Test installation
     if test_installation():
-        print("\n🎉 repo-backup installed successfully!")
+        print("\nSUCCESS: repo-backup installed successfully!")
     else:
-        print("\n❌ Installation completed but test failed. Please check the logs above.")
+        print("\nFAIL: Installation completed but test failed. Please check the logs above.")
         sys.exit(1)

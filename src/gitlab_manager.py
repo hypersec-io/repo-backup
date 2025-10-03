@@ -55,7 +55,7 @@ class GitLabManager(RepositoryManager):
         # If specific groups are specified, only get projects from those groups
         if self.include_groups:
             self.logger.info(
-                f"🎯 Filtering to specific GitLab groups: {', '.join(self.include_groups)}"
+                f"FILTER: Filtering to specific GitLab groups: {', '.join(self.include_groups)}"
             )
             for group_path in self.include_groups:
                 try:
@@ -84,7 +84,7 @@ class GitLabManager(RepositoryManager):
                     self.logger.warning(f"Could not access group {group_path}: {e}")
         else:
             # Get all projects the user has access to (original behavior)
-            self.logger.info("🔍 Discovering all accessible GitLab projects")
+            self.logger.info("DISCOVER: Discovering all accessible GitLab projects")
             projects = self.client.projects.list(
                 membership=True, all=True, get_all=True
             )

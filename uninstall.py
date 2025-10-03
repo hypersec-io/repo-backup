@@ -39,7 +39,7 @@ def uninstall_repo_backup():
     else:
         print(f"Installation directory {install_dir} not found")
     
-    print("✓ repo-backup uninstalled successfully!")
+    print("OK repo-backup uninstalled successfully!")
 
 
 if __name__ == "__main__":
