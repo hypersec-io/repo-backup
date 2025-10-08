@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v2.0.2 (2025-10-09)
+
+### Documentation
+
+- Improve documentation and remove internal development notes
+  ([`3c7776f`](https://github.com/hypersec-io/repo-backup/commit/3c7776f80e8fc3646e13db6925ad6ac814df93c5))
+
+
 ## v2.0.1 (2025-10-03)
 
 ### Bug Fixes
