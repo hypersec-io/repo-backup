@@ -1,200 +1,272 @@
-# Contributing to repo-backup
+# Contributing to Repository Backup Tool
 
-Thank you for your interest in contributing to repo-backup! This document outlines the development process and standards for this project.
+Hey there! We're really excited that you're interested in contributing to this project. Whether you're fixing bugs, adding features, or improving documentation, every contribution helps make this tool better for everyone.
 
-## Development Setup
+## Table of Contents
 
-1. Clone the repository:
+- [Getting Started](#getting-started)
+- [Development Environment](#development-environment)
+- [How to Contribute](#how-to-contribute)
+- [Coding Guidelines](#coding-guidelines)
+- [Testing Your Changes](#testing-your-changes)
+- [Submitting Changes](#submitting-changes)
+- [Release Process](#release-process)
+- [Community and Support](#community-and-support)
+
+## Getting Started
+
+First off, thanks for taking the time to contribute! This project is all about making repository backups simple and reliable for enterprise teams. We built it because we needed a solid way to back up our repos across multiple platforms, and we hope it helps you too.
+
+### Quick Setup
+
+Get your development environment running in just a few steps:
+
 ```bash
-git clone https://github.com/hypersec-io/infra-repo-backup.git
-cd infra-repo-backup
-```
+# Grab the code
+git clone https://github.com/hypersec-io/repo-backup.git
+cd repo-backup
 
-2. Install development dependencies:
-```bash
+# Install the development tools
 uv sync --extra dev --extra test
-```
 
-3. Run tests to verify setup:
-```bash
+# Make sure everything's working
 uv run pytest tests/ -v
 ```
 
-## Commit Message Convention
+That's it! You're ready to start contributing.
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/) for automated versioning and changelog generation.
+## Development Environment
 
-### Commit Message Format
+### What You'll Need
 
-```
-<type>[optional scope]: <description>
+- Python 3.9 or newer (we test on 3.9, 3.10, and 3.11)
+- Git (obviously!)
+- uv for dependency management
+- AWS CLI (if you're working on S3 features)
 
-[optional body]
+### Setting Up Your Environment
 
-[optional footer(s)]
-```
-
-### Types
-
-- **feat**: A new feature (triggers MINOR version bump)
-- **fix**: A bug fix (triggers PATCH version bump)
-- **docs**: Documentation only changes
-- **style**: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
-- **refactor**: A code change that neither fixes a bug nor adds a feature
-- **perf**: A code change that improves performance
-- **test**: Adding missing tests or correcting existing tests
-- **build**: Changes that affect the build system or external dependencies
-- **ci**: Changes to CI configuration files and scripts
-- **chore**: Other changes that don't modify src or test files
-
-### Breaking Changes
-
-For breaking changes, add `!` after the type or add `BREAKING CHANGE:` in the footer:
+After cloning the repo, you'll want to set up your local config:
 
 ```bash
-feat!: remove deprecated backup methods
+# Copy the example config
+cp .env.example .env
 
-BREAKING CHANGE: The legacy backup methods have been removed. 
-Use the new unified backup API instead.
+# Edit it with your test credentials
+# (Don't worry, .env is git-ignored)
+vim .env
 ```
 
-### Examples
+Pro tip: Use test repositories and sandboxed environments when developing. Nobody wants to accidentally mess with production repos!
+
+## How to Contribute
+
+### Found a Bug?
+
+Bugs happen! If you've found one:
+
+1. Check if someone's already reported it in our [issues](https://github.com/hypersec-io/repo-backup/issues)
+2. If not, open a new issue with:
+   - What you were trying to do
+   - What happened instead
+   - Steps to reproduce it
+   - Your environment details (OS, Python version, etc.)
+
+### Want to Add a Feature?
+
+Awesome! Here's how to go about it:
+
+1. Open an issue first to discuss the idea
+2. Fork the repository
+3. Create a feature branch (`git checkout -b feature/amazing-new-thing`)
+4. Write your code (and tests!)
+5. Make sure all tests pass
+6. Submit a pull request
+
+### Improving Documentation?
+
+Documentation improvements are always welcome! Whether it's fixing typos, adding examples, or clarifying confusing parts, good docs make everyone's life easier.
+
+## Coding Guidelines
+
+We try to keep things clean and consistent. Here's what we aim for:
+
+### Python Style
+
+We follow PEP 8 with a few preferences:
+
+- Line length: 120 characters (because we're not on 80-column terminals anymore)
+- Use type hints when it makes the code clearer
+- Write docstrings that actually help future developers (including yourself)
+
+### Code Philosophy
+
+- Keep it simple - clever code is hard to maintain
+- Handle errors gracefully - users should understand what went wrong
+- Log useful information - but don't spam the logs
+- Test the important stuff - 100% coverage isn't the goal, confidence is
+
+### Commit Messages
+
+We use conventional commits for automated versioning. It's pretty straightforward:
 
 ```bash
-# Feature addition
-feat(cli): add --test option for integration testing
+# Adding a feature
+feat: add support for GitHub Enterprise
 
-# Bug fix
-fix(s3): handle empty repositories correctly
+# Fixing a bug
+fix: handle empty repositories in git bundle creation
 
-# Breaking change
-feat(api)!: restructure backup configuration format
+# Breaking change (bumps major version)
+feat!: change config file format to YAML
 
-# Documentation
-docs: update installation instructions
+# With more context
+fix(s3): retry uploads on temporary network failures
 
-# Performance improvement
-perf(backup): optimize parallel repository processing
-
-# Test addition
-test: add integration tests for --test mode
+The S3 uploader now retries failed uploads up to 3 times
+with exponential backoff. This handles temporary network
+issues without failing the entire backup job.
 ```
 
-### Scopes
+Types you'll use most often:
 
-Common scopes for this project:
-- `cli`: Command-line interface changes
-- `github`: GitHub platform integration
-- `gitlab`: GitLab platform integration  
-- `bitbucket`: Bitbucket platform integration
-- `s3`: AWS S3 integration
-- `local`: Local backup functionality
-- `api`: Core API changes
-- `tests`: Test-related changes
-- `docs`: Documentation changes
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation updates
+- `test`: Adding or updating tests
+- `refactor`: Code cleanup that doesn't change functionality
+- `perf`: Performance improvements
 
-## Pull Request Process
+## Testing Your Changes
 
-1. Create a feature branch from `main`:
-```bash
-git checkout -b feat/your-feature-name
-```
+We've got a decent test suite that helps catch issues early:
 
-2. Make your changes following the coding standards
-3. Add tests for new functionality
-4. Ensure all tests pass:
-```bash
-uv run pytest tests/ -v
-```
-
-5. Commit your changes using conventional commits
-6. Push your branch and create a pull request
-
-## Testing
-
-### Unit Tests
 ```bash
 # Run all tests
 uv run pytest tests/ -v
 
-# Run specific test file
-uv run pytest tests/test_repository_backup.py -v
+# Test a specific module
+uv run pytest tests/test_github_manager.py -v
 
-# Run with coverage
+# Check test coverage
 uv run pytest tests/ --cov=src --cov-report=html
+
+# Run the tool in test mode (uses small test repos)
+uv run repo-backup local /tmp/test --test
 ```
 
-### Integration Tests
-```bash
-# Test with real repositories (requires .env configuration)
-uv run repo-backup local /tmp/test-backup --test
+### Writing Tests
 
-# Test different platform combinations
-uv run repo-backup local /tmp/test --test --platform github
+When adding new features:
+
+- Write tests that cover the main use cases
+- Test error conditions too
+- Mock external services (we don't want tests hitting real APIs)
+- Use descriptive test names that explain what's being tested
+
+Example:
+
+```python
+def test_github_manager_handles_rate_limiting():
+    """Verify that GitHub API rate limit responses trigger appropriate backoff"""
+    # Your test here
 ```
+
+## Submitting Changes
+
+### Pull Request Process
+
+1. Fork the repo and create your branch from `main`
+2. Make your changes
+3. Run the tests to make sure nothing broke
+4. Update documentation if needed
+5. Push your branch and open a PR
+
+### What Happens Next?
+
+We'll review your PR as soon as we can. We might ask for some changes or have questions - it's all part of the process. Once everything looks good, we'll merge it!
+
+### PR Guidelines
+
+A good PR:
+
+- Has a clear description of what it does and why
+- Includes tests for new functionality
+- Updates documentation if needed
+- Follows the existing code style
+- Has commits that tell a story
 
 ## Release Process
 
-This project uses automated semantic versioning:
+We use semantic-release to automate our versioning and releases. Here's how it works:
 
-1. Commits are analyzed for semantic meaning
-2. Version numbers are automatically determined
-3. Changelog is automatically generated
-4. Git tags are created automatically
+### Automated Releases
 
-### Creating a Release
+When changes are merged to `main`, our CI automatically:
 
-Releases happen automatically when commits are pushed to the `main` branch. To create a release:
+1. Analyzes commit messages to determine the version bump
+2. Updates the version number in all the right places
+3. Generates/updates CHANGELOG.md
+4. Creates a git tag
+5. Publishes a GitHub release
 
-1. Ensure your commits follow conventional commit format
-2. Merge pull request to `main` branch
-3. The CI will automatically:
-   - Analyze commits since last release
-   - Determine the next version number
-   - Update CHANGELOG.md
-   - Create and push a git tag
-   - Create a GitHub release
+### Version Bumps
 
-### Manual Release (if needed)
+Based on your commit messages:
+
+- `fix:` commits trigger patch releases (1.2.3 → 1.2.4)
+- `feat:` commits trigger minor releases (1.2.3 → 1.3.0)
+- Breaking changes trigger major releases (1.2.3 → 2.0.0)
+
+### Manual Release (Emergency Only)
+
+If you absolutely need to create a release manually:
 
 ```bash
-# Dry run to see what would be released
+# See what would be released
 uv run semantic-release version --noop
 
-# Create a release
+# Actually create the release
 uv run semantic-release version
 ```
 
-## Code Standards
+But really, just let the automation handle it. That's what it's there for!
 
-### Python Style
-- Follow PEP 8 style guidelines
-- Use type hints where appropriate
-- Write descriptive docstrings for functions and classes
-- Keep functions focused and modular
+### Important Note About Releases
 
-### Error Handling
-- Use structured logging with appropriate levels
-- Handle exceptions gracefully with meaningful error messages
-- Return boolean success indicators from backup operations
+**Never manually create tags or edit CHANGELOG.md** - semantic-release handles all of this automatically. If you manually create tags or changelog entries, it can break the automation.
 
-### Testing Standards
-- Write tests for new features and bug fixes
-- Use descriptive test names that explain what is being tested
-- Mock external dependencies (git operations, API calls)
-- Test both success and failure scenarios
+## Community and Support
 
-## Documentation
+### Code of Conduct
 
-- Update README.md for user-facing changes
-- Update CONTRIBUTING.md for development process changes
-- Add docstrings to new functions and classes
-- Update configuration examples when adding new options
+We're committed to providing a welcoming and inclusive environment. Be kind, be respectful, and remember that we're all here to make something useful.
 
-## Questions or Problems?
+### Getting Help
 
-- Check existing [issues](https://github.com/hypersec-io/infra-repo-backup/issues)
-- Create a new issue for bugs or feature requests
-- Follow the conventional commit format for all contributions
+Stuck on something? No worries!
 
-Thank you for contributing to repo-backup!
+- Check the existing [documentation](README.md)
+- Look through [closed issues](https://github.com/hypersec-io/repo-backup/issues?q=is%3Aissue+is%3Aclosed) - someone might have had the same question
+- Open a new issue if you're still stuck
+- Be patient - we're a small team and sometimes life gets busy
+
+### Communication Channels
+
+Most of our discussion happens in GitHub issues. It keeps everything public and searchable, which helps future contributors.
+
+### Recognition
+
+We appreciate every contribution, big or small. Contributors are recognized in our release notes and your commits are forever part of the project's history.
+
+## License
+
+By contributing to this project, you agree that your contributions will be licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+
+## Final Thoughts
+
+Open source is awesome because people like you make it better. Whether you're fixing a typo or adding a major feature, you're helping make this tool more useful for everyone. Thanks for being part of it!
+
+---
+
+Questions? Issues? Just want to say hi? Open an issue and let's chat!

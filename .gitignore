@@ -37,6 +37,9 @@ uv.lock
 *.swo
 *~
 
+# Internal CI
+scripts/
+
 # AI Coding Assistants
 .claude/
 CLAUDE.md

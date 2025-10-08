@@ -1,408 +1,312 @@
-# repo-backup
+# Repository Backup Tool
 
-Enterprise repository backup tool for GitHub, GitLab, and Bitbucket
+A straightforward enterprise tool for backing up Git repositories from GitHub, GitLab, and Bitbucket
 
 [![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-Enterprise repository backup tool that syncs corporate Git repositories from GitHub, GitLab, and Bitbucket to local storage or AWS S3.
+We built this tool because we needed a reliable way to backup all our repositories across different platforms. It handles the heavy lifting of discovering repos, cloning them efficiently, and storing them either locally or in S3. Nothing fancy, just solid backup automation that works.
 
-## Features
+## What It Does
 
-- **Multi-Platform Support**: Backup repositories from GitHub, GitLab, and Bitbucket
-- **Corporate Repository Focus**: Automatically excludes personal repositories (configurable)
-- **Direct S3 Upload**: Streams repositories directly to S3 without storing locally
-- **Multiple Backup Methods**: 
-  - Git bundle format (recommended) - preserves full git history
-  - Tar.gz archive format
-- **Parallel Processing**: Backup multiple repositories simultaneously
-- **Filtering**: Include/exclude repositories based on name patterns
-- **Multiple Accounts**: Support for multiple accounts per platform
-- **Progress Tracking**: Visual progress bars and detailed logging
+- Backs up repositories from GitHub, GitLab, and Bitbucket
+- Works with corporate/organization repositories by default
+- Uploads directly to S3 or saves locally
+- Creates git bundles (preserves complete history) or tar archives
+- Processes multiple repos in parallel for speed
+- Filters repos by name patterns if needed
+- Handles multiple accounts per platform
+- Shows progress bars so you know what's happening
 
-## Prerequisites
+## What You'll Need
 
-- Python 3.9+
-- Git installed and configured
-- Access tokens for your git platforms
-- Optional: AWS account with S3 bucket for cloud storage
+- Python 3.9 or newer
+- Git installed on your system
+- Access tokens for the platforms you want to backup
+- AWS account with S3 (optional, for cloud backups)
 
-## Quick Install
+## Getting Started
 
-**System-wide installation (recommended):**
+### Quick Installation
+
+If you just want to use the tool system-wide:
+
 ```bash
-# Download and install system-wide
+# Download and install
 sudo python3 install.py
 
-# Test the installation
+# Check it worked
 repo-backup --help
 ```
 
-**Development installation:**
+### Developer Setup
+
+If you're planning to contribute or modify the code:
+
 ```bash
-# Clone and setup development environment
-git clone https://github.com/hypersec-io/infra-repo-backup.git
-cd infra-repo-backup
+# Get the code
+git clone https://github.com/hypersec-io/repo-backup.git
+cd repo-backup
 uv sync
 
-# Test functionality
+# Try it out
 uv run repo-backup local /tmp/test-backup --test
 ```
 
-## Initial Setup
+## Setting Things Up
 
-### Step 1: S3 Bucket Setup (For S3 Backups)
+### Step 1: S3 Setup (If You Want Cloud Backups)
 
-**NOTE: See [AWS.md](AWS.md) for comprehensive AWS configuration guide**
+**Note:** Check out [AWS.md](AWS.md) for the full AWS configuration guide if you need it.
 
-The setup process requires specific AWS permissions to create infrastructure (S3 bucket, IAM user, policies). This does **NOT** require AWS administrator access - only permissions to create S3 buckets and IAM users.
+The tool can set up your S3 bucket automatically. You'll need AWS permissions to create S3 buckets and IAM users - not full admin access, just those specific permissions.
 
-For detailed information, see:
-- [AWS.md - For Cloud Administrators](AWS.md#for-cloud-administrators) - Set up permissions for users
-- [AWS.md - Permission Details](AWS.md#permission-details) - Exact permissions required
-- [AWS.md - Security Best Practices](AWS.md#security-best-practices) - IAM roles, encryption, MFA
-
-#### Quick Setup
+Quick setup:
 
 ```bash
-# Basic setup (uses your current AWS CLI session)
+# Basic setup using your current AWS profile
 repo-backup s3 --setup
 
-# Setup with specific AWS profile (NOT from .env)
-repo-backup s3 --setup --setup-profile admin-profile
-# OR
+# Use a specific AWS profile for setup
 repo-backup s3 --setup --profile admin-profile
 
-# With Glacier for cost-optimized long-term storage
+# Enable Glacier for cheaper long-term storage
 repo-backup s3 --setup --enable-glacier
 
-# Custom bucket name and region
-repo-backup s3 --setup --bucket-name my-backup-bucket --region us-east-1
+# Use your own bucket name
+repo-backup s3 --setup --bucket-name my-backups --region us-east-1
 ```
 
-**Note:** The `--setup` command uses your AWS credentials (NOT `.env` credentials) to create infrastructure. See [AWS.md - Setup Permissions](AWS.md#setup-permissions-required-once) for details on required permissions.
+This creates everything you need:
+- S3 bucket with a unique name (or your chosen name)
+- Versioning enabled for backup history
+- Encryption turned on
+- Public access blocked
+- Lifecycle policies configured
+- Dedicated IAM user with minimal permissions
+- AWS CLI profile set up
+- `.env` file with all the settings
+- Quick test to make sure it works
 
-This automated setup will:
-- Create S3 bucket with unique name (or use your custom name)
-- Enable versioning for backup history
-- Configure encryption (AES256)
-- Block all public access
-- Set up lifecycle policies (Standard or with Glacier)
-- Create dedicated IAM user with minimal permissions
-- Configure AWS CLI profile
-- Generate `.env` file with all settings
-- Test bucket access and permissions
+After setup, you'll see the bucket name and profile info. The `.env` file will have your S3 config ready to go.
 
-**After setup completes:**
-- Note the bucket name, IAM user, and AWS profile displayed
-- The `.env` file will be created with S3 configuration
-- Add your Git platform tokens to the `.env` file (see below)
+### Step 2: Add Your Git Platform Tokens
 
-### Step 2: Configure Access Tokens
+First, copy the example config (skip this if S3 setup already created one):
 
-1. Copy the example configuration (if S3 setup didn't create one):
 ```bash
 cp .env.example .env
 ```
 
-2. Edit `.env` with your credentials:
+Then add your tokens to `.env`:
+
 ```bash
-# Git Platform Tokens (REQUIRED - see Authentication section for details)
-GITHUB_TOKEN=ghp_your_token_here         # Classic PAT with repo, read:org scopes
-GITLAB_TOKEN=glpat_your_token_here       # Personal Access Token with read_api, read_repository
-BITBUCKET_TOKEN=ATCTT_your_token_here    # Workspace Access Token (workspace-scoped)
-BITBUCKET_WORKSPACE=workspace-slug       # Required for workspace tokens
+# Platform tokens - get these from your platforms (see below)
+GITHUB_TOKEN=ghp_your_token_here
+GITLAB_TOKEN=glpat_your_token_here
+BITBUCKET_TOKEN=ATCTT_your_token_here
+BITBUCKET_WORKSPACE=your-workspace
 
-# Backup Destinations (choose one or both)
-LOCAL_BACKUP_PATH=/mnt/backups/repo-backup  # For local backups
-AWS_S3_BUCKET=repo-backup-123456789  # Auto-filled by S3 setup
+# Where to save backups
+LOCAL_BACKUP_PATH=/mnt/backups/repo-backup
+AWS_S3_BUCKET=repo-backup-123456789  # Set by S3 setup
 
-# AWS Configuration (auto-filled by S3 setup)
-AWS_PROFILE=repo-backup-s3-my-bucket-name
+# AWS settings (filled by S3 setup)
+AWS_PROFILE=repo-backup-profile
 AWS_REGION=us-west-2
 
-# Optional: Performance settings
+# Optional tweaks
 PARALLEL_WORKERS=5
-BACKUP_METHOD=direct  # or 'archive'
+BACKUP_METHOD=direct
 ```
 
-### Getting Access Tokens
+### Getting Your Access Tokens
 
-*Note: These instructions are current as of August 2025. Platform interfaces may change - check official documentation if these steps don't match.*
+*Quick note: These instructions are current as of late 2025. Platform UIs change, so check their docs if something looks different.*
 
-#### GitHub
+#### GitHub Tokens
 
-**Option 1: Personal Access Token (Classic) - Still widely used**
-1. Navigate to: **Settings → Developer settings → Personal access tokens → Tokens (classic)**
-   - Direct URL: https://github.com/settings/tokens
-2. Click **Generate new token → Generate new token (classic)**
-3. Set expiration (max 1 year, recommend: 90 days)
-4. Select scopes:
-   - `repo` (Full control of private repositories)
-   - `read:org` (Required for organization repositories)
-5. Click **Generate token**
-6. Copy immediately - token starts with `ghp_`
-7. Store securely - you won't see it again!
+**Classic Token (Still Works Great):**
+1. Go to Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. Generate new token (classic)
+3. Set expiration (90 days is reasonable)
+4. Check these scopes:
+   - `repo` - Access to private repositories
+   - `read:org` - See organization repos
+5. Generate and copy the token (starts with `ghp_`)
+6. Save it somewhere safe - you won't see it again
 
-**Option 2: Fine-grained Personal Access Token (GitHub's recommended approach)**
-1. Navigate to: **Settings → Developer settings → Personal access tokens → Fine-grained tokens**
-   - Direct URL: https://github.com/settings/tokens?type=beta
-2. Click **Generate new token**
-3. Configure:
-   - Token name: `repo-backup`
-   - Expiration: Up to 1 year
-   - Repository access: Select specific repos or "All repositories"
-4. Set repository permissions:
+**Fine-grained Token (GitHub's New Way):**
+1. Go to Settings → Developer settings → Personal access tokens → Fine-grained tokens
+2. Generate new token
+3. Name it something like "repo-backup"
+4. Pick your repositories or "All repositories"
+5. Set permissions:
    - Contents: Read
-   - Metadata: Read (automatically selected)
-   - Actions: Read (if backing up workflows)
-5. Click **Generate token**
-6. Copy the token - starts with `github_pat_`
+   - Metadata: Read (automatic)
+   - Actions: Read (if you backup workflows)
+6. Generate and copy (starts with `github_pat_`)
 
-#### GitLab
-1. Navigate to: **User Settings → Access Tokens**
-   - Direct URL: https://gitlab.com/-/profile/personal_access_tokens
-2. Fill in token details:
-   - Token name: `repo-backup`
-   - Expiration date: Set as needed
-3. Select scopes:
+#### GitLab Tokens
+
+Pretty straightforward:
+1. Go to User Settings → Access Tokens
+2. Name it "repo-backup"
+3. Set an expiration date
+4. Check these scopes:
    - `read_repository`
-   - `read_api` (for group/project listing)
-4. Click **Create personal access token**
-5. Copy the token - starts with `glpat-`
+   - `read_api`
+5. Create and copy the token (starts with `glpat-`)
 
-#### Bitbucket
+#### Bitbucket Tokens
 
-**IMPORTANT: Bitbucket Authentication Changes (August 2025)**
+**Heads up:** Bitbucket works differently than the others. Each token only works for one workspace, so you'll need separate tokens for different workspaces.
 
-Bitbucket uses **workspace-scoped tokens** unlike GitHub and GitLab which provide organization-wide access. This means:
-- One token per workspace (cannot access multiple workspaces with a single token)
-- Must specify `BITBUCKET_WORKSPACE` in configuration
-- Different from other platforms that can discover all accessible organizations
-
-**Workspace Access Tokens (Recommended - Current Method)**
-1. Navigate to your workspace settings
-2. Click **Access tokens** under **Security**
-3. Create token with **Repositories: Read** permission
-4. Note: Workspace tokens are a Premium feature
-5. Token starts with `ATCTT` prefix
-6. In `.env` file configure:
+**Workspace Tokens (Current Method):**
+1. Go to your workspace settings
+2. Find Access tokens under Security
+3. Create token with Repositories: Read permission
+4. Copy the token (starts with `ATCTT`)
+5. Remember to set both token and workspace in `.env`:
    ```bash
-   BITBUCKET_TOKEN=ATCTT_your_workspace_token_here
-   BITBUCKET_WORKSPACE=your-workspace-slug
+   BITBUCKET_TOKEN=ATCTT_your_token
+   BITBUCKET_WORKSPACE=your-workspace
    ```
 
-**App Passwords (Legacy - Being Deprecated)**
-1. Navigate to: **Personal Bitbucket settings → App passwords**
-   - Direct URL: https://bitbucket.org/account/settings/app-passwords/
-2. Click **Create app password**
-3. Label: `repo-backup`
-4. Select permissions:
+**App Passwords (Old Method, Still Works):**
+1. Go to Personal settings → App passwords
+2. Create app password named "repo-backup"
+3. Give it these permissions:
    - Account: Read
    - Workspace membership: Read
    - Repositories: Read
-5. Click **Create**
-6. In `.env` file use:
-   ```bash
-   BITBUCKET_USERNAME=your-username
-   BITBUCKET_TOKEN=your-app-password
-   ```
+4. Use with your username in `.env`
 
-**Why Bitbucket Works Differently:**
-Unlike GitHub (with `read:org` scope) and GitLab (with group discovery), Bitbucket's API architecture requires workspace-specific tokens. This is a platform limitation, not a tool limitation.
-   - pullrequest:read (optional)
-7. Create and copy token (shown only once!)
-8. Use with your username as before
+## Using the Tool
 
-**Bitbucket Server/Data Center (self-hosted):**
-1. Navigate to: **Profile picture → Manage account → Personal access tokens**
-   - URL: `https://your-bitbucket-server/plugins/servlet/access-tokens/manage`
-2. Click **Create a token**
-3. Token details:
-   - Token name: `repo-backup`
-   - Expiry: As needed
-4. Permissions:
-   - Repository: Read
-   - Project: Read
-5. Click **Create**
-6. Copy the HTTP access token
-7. In `.env` file:
-   ```bash
-   BITBUCKET_SERVER_URL=https://your-bitbucket-server
-   BITBUCKET_TOKEN=your-token
-   ```
-
-**Important Notes:**
-- Bitbucket Cloud uses **app passwords** (not tokens like GitHub/GitLab)
-- The app password must be combined with your username for authentication
-- For Bitbucket Server, use the token directly
-- All tokens should have **read-only** permissions for security
-
-## Usage
-
-### Basic Backup Commands
+### Basic Commands
 
 ```bash
-# Local backup to filesystem
-repo-backup local /path/to/backup/directory
+# Backup to local directory
+repo-backup local /path/to/backups
 
-# S3 backup (bucket must be configured first)
+# Backup to S3
 repo-backup s3
 
-# Both local and S3
+# Do both
 repo-backup both /path/to/local/backup
 ```
 
-### Filtering Options
+### Filtering What to Backup
 
 ```bash
-# Backup only specific platforms
+# Just GitHub repos
 repo-backup local /backup/dir --platform github
+
+# Multiple platforms
 repo-backup local /backup/dir --platform gitlab,bitbucket
 
-# Backup specific repositories
+# Specific repositories
 repo-backup local /backup/dir --repos owner/repo1,owner/repo2
 
-# Use pattern matching
+# Pattern matching
 repo-backup local /backup/dir --pattern "frontend-*"
 repo-backup local /backup/dir --pattern-type regex --pattern ".*-service$"
 
-# Exclude forks and personal repos (default behavior)
-repo-backup local /backup/dir --include-forks  # To include forks
+# Include forks (normally skipped)
+repo-backup local /backup/dir --include-forks
 ```
 
-### List Existing Backups
+### Checking Your Backups
 
 ```bash
-# List all local backups
+# See what's backed up locally
 repo-backup local /backup/dir --list
 
-# List S3 backups
+# Check S3 backups
 repo-backup s3 --list
 
-# List backups from specific platform
+# Filter by platform
 repo-backup local /backup/dir --list --platform github
 ```
 
-### Advanced Options
+### Advanced Stuff
 
 ```bash
-# Control parallel processing
-repo-backup local /backup/dir --workers 10  # Set worker count
-repo-backup local /backup/dir --workers 1   # Disable parallel processing
+# Speed things up with more workers
+repo-backup local /backup/dir --workers 10
 
-# Test mode - backup only smallest repo
+# Or slow down for limited bandwidth
+repo-backup local /backup/dir --workers 2
+
+# Test mode - just backs up smallest repo
 repo-backup local /backup/dir --test
-repo-backup s3 --test
 
-# Archive format instead of bundles
+# Use tar archives instead of git bundles
 repo-backup local /backup/dir --archive
 
-# Force re-backup even if unchanged
+# Force re-backup everything
 repo-backup local /backup/dir --force
 
-# Verbose logging
+# See what's happening
 repo-backup local /backup/dir --verbose
 
-# Diagnostic commands
-repo-backup --health-check           # Test platform connectivity
-repo-backup --validate-config        # Verify configuration
-repo-backup --verify-backup /path    # Check backup integrity
+# Check if everything's configured right
+repo-backup --health-check
+repo-backup --validate-config
 ```
 
-## How It Works
+## How It Actually Works
 
-1. **Discovery**: Connects to each configured platform and lists all accessible repositories
-2. **Filtering**: 
-   - Excludes personal repositories (if configured)
-   - Excludes forks (if configured)
-   - Applies include/exclude patterns
+1. **Discovery**: Connects to each platform and finds all your repos
+2. **Filtering**: Skips personal repos, forks, and applies your patterns
 3. **Backup**: For each repository:
-   - Clones the repository with full history (`git clone --mirror`)
-   - Creates a git bundle or tar.gz archive
-   - Uploads directly to S3 with metadata
-   - Cleans up temporary files
-4. **Verification**: Reports success/failure statistics
+   - Clones with full history using `git clone --mirror`
+   - Creates a git bundle or tar.gz file
+   - Uploads to S3 or saves locally
+   - Cleans up temp files
+4. **Report**: Shows you what worked and what didn't
 
-## Backup Format
+## Backup File Formats
 
-### Git Bundle (Recommended)
-- File format: `repos/{platform}/{owner}/{repo_name}_{timestamp}.bundle`
-- Preserves complete git history and all branches
-- Can be cloned directly: `git clone repo.bundle restored-repo`
+### Git Bundles (Recommended)
 
-### Archive Format
-- File format: `repos/{platform}/{owner}/{repo_name}_{timestamp}.tar.gz`
+These are like portable git repositories:
+- Path: `repos/{platform}/{owner}/{repo_name}_{timestamp}.bundle`
+- Contains complete history and all branches
+- Restore with: `git clone repo.bundle restored-repo`
+
+### Tar Archives
+
+Traditional compressed archives:
+- Path: `repos/{platform}/{owner}/{repo_name}_{timestamp}.tar.gz`
 - Contains the bare git repository
-- Extract with: `tar -xzf repo.tar.gz`
+- Restore with: `tar -xzf repo.tar.gz`
 
-## S3 Configuration
+## Restoring Your Backups
 
-**NOTE: For detailed AWS setup instructions, see [AWS.md](AWS.md)**
+### From a Git Bundle
 
-The tool automatically creates and configures S3 buckets with proper security settings. See the [Initial Setup](#initial-setup) section for quick start, or [AWS.md](AWS.md) for:
-
-- **Administrator Guide**: [Setting up permissions for users](AWS.md#for-cloud-administrators)
-- **User Guide**: [Running setup and daily backups](AWS.md#for-backup-tool-users)
-- **Security**: [IAM roles, encryption, MFA, cost optimization](AWS.md#security-best-practices)
-- **Troubleshooting**: [Common issues and solutions](AWS.md#troubleshooting)
-
-## S3 Structure
-
-```
-s3://your-bucket/
-├── repos/
-│   ├── github/
-│   │   ├── organization-name/
-│   │   │   ├── repo1_20250825_120000.bundle
-│   │   │   └── repo2_20250825_120100.bundle
-│   ├── gitlab/
-│   │   ├── group-name/
-│   │   │   └── project1_20250825_120200.bundle
-│   └── bitbucket/
-│       └── workspace-name/
-│           └── repository1_20250825_120300.bundle
-```
-
-## Restoring Backups
-
-### From Git Bundle
-
-#### Method 1: Direct clone from bundle
+The easy way:
 ```bash
-# Download bundle from S3 to your root directory
-cd /path/to/your/root/directory
+# Get the bundle from S3
 aws s3 cp s3://your-bucket/repos/github/org/repo.bundle repo.bundle
 
-# Clone directly from the bundle file
+# Clone it
 git clone repo.bundle restored-repo
-
-# Enter the restored repository
 cd restored-repo
 
-# (Optional) Set the correct remote origin
+# Point it back to GitHub (optional)
 git remote set-url origin https://github.com/org/repo.git
 
-# Verify the restoration
-git log --oneline -5  # Check commit history
-git branch -a         # See all branches
-git tag -l           # List all tags
+# Check everything's there
+git log --oneline -5
+git branch -a
+git tag -l
 ```
 
-#### Method 2: Fetch into existing repository
-```bash
-# Download bundle from S3
-aws s3 cp s3://your-bucket/repos/github/org/repo.bundle repo.bundle
+### From an Archive
 
-# Add bundle as remote to existing repo
-git remote add backup repo.bundle
-git fetch backup
-
-# Merge or checkout branches as needed
-git checkout backup/main
-```
-
-### From Archive
 ```bash
 # Download and extract
 aws s3 cp s3://your-bucket/repos/github/org/repo.tar.gz repo.tar.gz
@@ -412,29 +316,32 @@ tar -xzf repo.tar.gz
 git clone repo.git restored-repo
 ```
 
-## Automation
+## Automating Backups
 
-### Using Cron (Linux/Mac)
+### Linux/Mac (using cron)
+
+Add to your crontab (runs daily at 2 AM):
 ```bash
-# Add to crontab (runs daily at 2 AM)
-0 2 * * * cd /path/to/repo-backup && uv run repo-backup s3 --all >> repo-backup.log 2>&1
+0 2 * * * cd /path/to/repo-backup && uv run repo-backup s3 >> backup.log 2>&1
 ```
 
-### Using Task Scheduler (Windows)
-1. Create a batch file:
+### Windows (using Task Scheduler)
+
+Create a batch file:
 ```batch
 cd C:\path\to\repo-backup
-uv run repo-backup s3 --all
+uv run repo-backup s3
 ```
-2. Schedule it in Task Scheduler
+Then schedule it in Task Scheduler.
 
-### Using GitHub Actions
+### GitHub Actions
+
 ```yaml
 name: Backup Repos
 on:
   schedule:
     - cron: '0 2 * * *'  # Daily at 2 AM UTC
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:     # Manual trigger
 
 jobs:
   backup:
@@ -446,79 +353,101 @@ jobs:
           python-version: '3.9'
       - run: |
           pip install -r requirements.txt
-          uv run repo-backup s3 --all
+          uv run repo-backup s3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
 
-## Security Best Practices
+## Security Notes
 
-1. **Never commit credentials** to version control
-2. Use **environment variables** for sensitive data:
-```bash
-export GITHUB_TOKEN=ghp_...
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-```
+### Keep Your Tokens Safe
 
-3. **Rotate tokens** regularly
-4. **AWS Security**: See [AWS.md - Security Best Practices](AWS.md#security-best-practices) for IAM roles, encryption, MFA, and cost optimization
+- Never commit tokens to git (seriously, don't)
+- Use environment variables for sensitive stuff:
+  ```bash
+  export GITHUB_TOKEN=ghp_...
+  export AWS_ACCESS_KEY_ID=...
+  ```
+- Rotate tokens regularly
+- Give tokens minimal permissions needed
 
-## Troubleshooting
+### AWS Security
 
-### Authentication Errors
-- Verify tokens have correct permissions
-- Check token expiration
-- Ensure network access to git platforms
+Check out [AWS.md](AWS.md) for the full security guide, including IAM roles, encryption, and cost optimization.
 
-### S3 Upload Failures
-- See [AWS.md - Troubleshooting](AWS.md#troubleshooting) for detailed AWS issue resolution
-- Verify AWS credentials and permissions
-- Ensure bucket exists and is accessible
+## Troubleshooting Common Issues
 
-### Large Repository Issues
-- Increase timeout values
-- Use fewer parallel workers
-- Consider backing up large repos separately
+### Authentication Problems
+- Double-check your tokens have the right permissions
+- Make sure tokens haven't expired
+- Verify you can reach the git platforms from your network
 
-### Out of Disk Space
-- Tool uses `./.tmp` for temporary files
-- Ensure sufficient disk space (2x largest repo size)
-- Temporary files are cleaned automatically
+### S3 Upload Issues
+- See [AWS.md - Troubleshooting](AWS.md#troubleshooting) for AWS-specific problems
+- Check AWS credentials are set correctly
+- Verify the bucket exists and you can access it
+
+### Large Repository Problems
+- Try fewer parallel workers
+- Make sure you have enough disk space (2x the largest repo)
+- Consider backing up huge repos separately
+
+### Running Out of Space
+- The tool uses `./.tmp` for temporary files
+- These get cleaned up automatically
+- Make sure you have enough space for the largest repo × 2
 
 ## Performance Tips
 
-1. **Parallel Workers**: Adjust based on network and CPU
-   - Default: 5 workers
-   - High-speed connection: 10-20 workers
-   - Limited bandwidth: 2-3 workers
+### Worker Count
+- Default is 5 (good for most cases)
+- Fast connection? Try 10-20
+- Limited bandwidth? Use 2-3
 
-2. **Filtering**: Use patterns to skip unnecessary repos
-   - Exclude test/demo repositories
-   - Focus on production code
+### Smart Filtering
+- Skip test/demo repositories
+- Focus on production code
+- Use patterns to exclude unnecessary repos
 
-3. **Scheduling**: Run during off-peak hours
+### Timing
+- Run during off-peak hours
+- Stagger backups if you have many repos
 
-4. **Incremental Backups**: Consider implementing incremental backups for very large repositories
+## Contributing
+
+We welcome contributions! Check out [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Release Process
+
+We use semantic-release for automated versioning:
+- Commits to `main` trigger automatic releases
+- Version numbers are determined from commit messages
+- CHANGELOG.md is generated automatically
+- Never manually create tags or edit the changelog
 
 ## License
 
-Apache License 2.0 - See LICENSE file for details
+Apache License 2.0 - See [LICENSE](LICENSE) for details
 
-## Security
+## Security Reminder
 
-**IMPORTANT: Token Security**
-- Never commit real tokens to version control
-- Use `.env.local` for your actual tokens (automatically ignored by git)
-- The `.env` file in the repository contains only placeholder values
-- Rotate tokens regularly and use minimal required permissions
-- For CI/CD, use separate tokens with limited scope
+**About Those Tokens:**
+- Never put real tokens in code you commit
+- Use `.env.local` for your actual credentials (it's git-ignored)
+- The `.env` file in the repo has only examples
+- Rotate tokens regularly
+- Use separate, limited tokens for CI/CD
 
-## Support
+## Need Help?
 
-For issues or questions:
-1. Check the logs for detailed error messages
-2. Verify configuration in `.env` file
-3. Ensure all prerequisites are installed
-4. Review the authentication section above for token setup
+If something's not working:
+1. Check the logs - they're pretty detailed
+2. Verify your `.env` configuration
+3. Make sure you have all prerequisites installed
+4. Review the token setup instructions above
+5. Check our [issues](https://github.com/hypersec-io/repo-backup/issues) page
+
+---
+
+Built with practicality in mind. We needed reliable repository backups, so we made this. Hope it helps you too!
