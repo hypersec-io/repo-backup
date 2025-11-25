@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -28,6 +29,39 @@ from typing import Optional
 from tqdm import tqdm
 
 from .base import Repository
+
+
+def robust_rmtree(path: Path, logger: logging.Logger, max_retries: int = 3) -> bool:
+    """
+    Robustly remove a directory tree with retries.
+    Handles race conditions where files may still be written during removal.
+
+    Args:
+        path: Path to remove
+        logger: Logger for messages
+        max_retries: Maximum number of retry attempts
+
+    Returns:
+        True if successfully removed, False otherwise
+    """
+    if not path.exists():
+        return True
+
+    for attempt in range(max_retries):
+        try:
+            shutil.rmtree(path)
+            return True
+        except OSError as e:
+            if attempt < max_retries - 1:
+                # Wait briefly before retry to allow any processes to complete
+                time.sleep(0.5 * (attempt + 1))
+                logger.debug(
+                    f"[CLEANUP] Retry {attempt + 1}/{max_retries} removing {path}: {e}"
+                )
+            else:
+                logger.warning(f"[CLEANUP] Failed to remove {path} after {max_retries} attempts: {e}")
+                return False
+    return False
 
 
 class LocalBackup:
@@ -106,13 +140,19 @@ class LocalBackup:
             self.logger.info(f"[BACKUP] Cloning {repo.name}...")
             clone_cmd = ["git", "clone", "--mirror", repo.clone_url, str(repo_path)]
 
+            # Use DEVNULL for stdout to avoid memory buffering of git progress output
             result = subprocess.run(
-                clone_cmd, capture_output=True, text=True, cwd=str(self.temp_dir.parent)
+                clone_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(self.temp_dir.parent),
             )
 
             if result.returncode != 0:
+                stderr_truncated = result.stderr[:500] if result.stderr else ""
                 self.logger.error(
-                    f"[ERROR] Clone failed for {repo.name}: {result.stderr}"
+                    f"[ERROR] Clone failed for {repo.name}: {stderr_truncated}"
                 )
                 return False
 
@@ -125,14 +165,19 @@ class LocalBackup:
                 "--date=format:%Y%m%d_%H%M%S",
             ]
             last_commit_result = subprocess.run(
-                last_commit_cmd, capture_output=True, text=True, cwd=str(repo_path)
+                last_commit_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                cwd=str(repo_path),
             )
 
             if last_commit_result.returncode != 0:
                 # Check if it's an empty repository
                 check_empty = subprocess.run(
                     ["git", "rev-list", "-n", "1", "--all"],
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
                     text=True,
                     cwd=str(repo_path),
                 )
@@ -141,7 +186,7 @@ class LocalBackup:
                         f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
                     )
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return True
                 else:
                     self.logger.error(
@@ -165,14 +210,15 @@ class LocalBackup:
                 )
                 # Cleanup temp directory
                 if repo_path.exists():
-                    shutil.rmtree(repo_path)
+                    robust_rmtree(repo_path, self.logger)
                 return True
 
             # Fetch LFS objects if LFS is used in the repository
             # Check .gitattributes for LFS filter patterns (works on bare repos)
             lfs_check = subprocess.run(
                 ["git", "--git-dir", str(repo_path), "show", "HEAD:.gitattributes"],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 text=True,
             )
 
@@ -181,8 +227,8 @@ class LocalBackup:
                 # Verify git-lfs is installed
                 lfs_installed = subprocess.run(
                     ["git", "lfs", "version"],
-                    capture_output=True,
-                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
                 if lfs_installed.returncode != 0:
                     self.logger.error(
@@ -190,21 +236,26 @@ class LocalBackup:
                         "Please install git-lfs to backup this repository."
                     )
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return False
 
                 self.logger.info(f"[LFS] Fetching LFS objects for {repo.name}...")
+                # Stream LFS output to DEVNULL - can be very large
                 lfs_fetch = subprocess.run(
                     ["git", "--git-dir", str(repo_path), "lfs", "fetch", "--all"],
-                    capture_output=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     text=True,
                 )
                 if lfs_fetch.returncode != 0:
+                    stderr_truncated = (
+                        lfs_fetch.stderr[:500] if lfs_fetch.stderr else ""
+                    )
                     self.logger.error(
-                        f"[ERROR] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
+                        f"[ERROR] LFS fetch failed for {repo.name}: {stderr_truncated}"
                     )
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return False
                 has_lfs = True
 
@@ -213,7 +264,11 @@ class LocalBackup:
             bundle_cmd = ["git", "bundle", "create", str(bundle_path), "--all"]
 
             result = subprocess.run(
-                bundle_cmd, capture_output=True, text=True, cwd=str(repo_path)
+                bundle_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(repo_path),
             )
 
             if result.returncode != 0:
@@ -224,7 +279,7 @@ class LocalBackup:
                     )
                     # Cleanup temp directory
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return True  # Return True to indicate this was handled successfully
                 else:
                     self.logger.error(
@@ -257,12 +312,23 @@ class LocalBackup:
 
             # Cleanup temp directory
             if repo_path.exists():
-                shutil.rmtree(repo_path)
+                robust_rmtree(repo_path, self.logger)
 
             return True
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Direct backup failed for {repo.name}: {e}")
+            self.logger.error(
+                f"[ERROR] Direct backup failed for {repo.name}: {type(e).__name__}: {e}"
+            )
+            # Cleanup temp directory on failure
+            if repo_path.exists():
+                try:
+                    robust_rmtree(repo_path, self.logger)
+                    self.logger.debug(f"[CLEANUP] Removed failed temp directory: {repo_path}")
+                except Exception as cleanup_error:
+                    self.logger.warning(
+                        f"[CLEANUP] Failed to remove temp directory {repo_path}: {cleanup_error}"
+                    )
             return False
 
     def _archive_backup(self, repo: Repository, backup_dir: Path) -> bool:
@@ -278,13 +344,19 @@ class LocalBackup:
             self.logger.info(f"[BACKUP] Cloning {repo.name}...")
             clone_cmd = ["git", "clone", "--mirror", repo.clone_url, str(repo_path)]
 
+            # Use DEVNULL for stdout to avoid memory buffering of git progress output
             result = subprocess.run(
-                clone_cmd, capture_output=True, text=True, cwd=str(self.temp_dir.parent)
+                clone_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(self.temp_dir.parent),
             )
 
             if result.returncode != 0:
+                stderr_truncated = result.stderr[:500] if result.stderr else ""
                 self.logger.error(
-                    f"[ERROR] Clone failed for {repo.name}: {result.stderr}"
+                    f"[ERROR] Clone failed for {repo.name}: {stderr_truncated}"
                 )
                 return False
 
@@ -297,14 +369,19 @@ class LocalBackup:
                 "--date=format:%Y%m%d_%H%M%S",
             ]
             last_commit_result = subprocess.run(
-                last_commit_cmd, capture_output=True, text=True, cwd=str(repo_path)
+                last_commit_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                cwd=str(repo_path),
             )
 
             if last_commit_result.returncode != 0:
                 # Check if it's an empty repository
                 check_empty = subprocess.run(
                     ["git", "rev-list", "-n", "1", "--all"],
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
                     text=True,
                     cwd=str(repo_path),
                 )
@@ -313,7 +390,7 @@ class LocalBackup:
                         f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
                     )
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return True
                 else:
                     self.logger.error(
@@ -337,14 +414,15 @@ class LocalBackup:
                 )
                 # Cleanup temp directory
                 if repo_path.exists():
-                    shutil.rmtree(repo_path)
+                    robust_rmtree(repo_path, self.logger)
                 return True
 
             # Fetch LFS objects if LFS is used in the repository
             # Check .gitattributes for LFS filter patterns (works on bare repos)
             lfs_check = subprocess.run(
                 ["git", "--git-dir", str(repo_path), "show", "HEAD:.gitattributes"],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 text=True,
             )
 
@@ -352,8 +430,8 @@ class LocalBackup:
                 # Verify git-lfs is installed
                 lfs_installed = subprocess.run(
                     ["git", "lfs", "version"],
-                    capture_output=True,
-                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
                 if lfs_installed.returncode != 0:
                     self.logger.error(
@@ -361,21 +439,25 @@ class LocalBackup:
                         "Please install git-lfs to backup this repository."
                     )
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return False
 
                 self.logger.info(f"[LFS] Fetching LFS objects for {repo.name}...")
                 lfs_fetch = subprocess.run(
                     ["git", "--git-dir", str(repo_path), "lfs", "fetch", "--all"],
-                    capture_output=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     text=True,
                 )
                 if lfs_fetch.returncode != 0:
+                    stderr_truncated = (
+                        lfs_fetch.stderr[:500] if lfs_fetch.stderr else ""
+                    )
                     self.logger.error(
-                        f"[ERROR] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
+                        f"[ERROR] LFS fetch failed for {repo.name}: {stderr_truncated}"
                     )
                     if repo_path.exists():
-                        shutil.rmtree(repo_path)
+                        robust_rmtree(repo_path, self.logger)
                     return False
 
             # Create tar.gz archive
@@ -390,12 +472,23 @@ class LocalBackup:
 
             # Cleanup temp directory
             if repo_path.exists():
-                shutil.rmtree(repo_path)
+                robust_rmtree(repo_path, self.logger)
 
             return True
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Archive backup failed for {repo.name}: {e}")
+            self.logger.error(
+                f"[ERROR] Archive backup failed for {repo.name}: {type(e).__name__}: {e}"
+            )
+            # Cleanup temp directory on failure
+            if repo_path.exists():
+                try:
+                    robust_rmtree(repo_path, self.logger)
+                    self.logger.debug(f"[CLEANUP] Removed failed temp directory: {repo_path}")
+                except Exception as cleanup_error:
+                    self.logger.warning(
+                        f"[CLEANUP] Failed to remove temp directory {repo_path}: {cleanup_error}"
+                    )
             return False
 
     def list_backups(self, platform: Optional[str] = None) -> list:
@@ -435,6 +528,23 @@ class LocalBackup:
             )
 
         return sorted(backups, key=lambda x: x["modified"], reverse=True)
+
+    def cleanup_stale_temps(self):
+        """Clean up any stale temporary directories from previous failed runs"""
+        if not self.temp_dir.exists():
+            return
+
+        stale_count = 0
+        for item in self.temp_dir.iterdir():
+            if item.is_dir() and "_clone" in item.name:
+                if robust_rmtree(item, self.logger):
+                    stale_count += 1
+                    self.logger.debug(f"[CLEANUP] Removed stale temp directory: {item}")
+
+        if stale_count > 0:
+            self.logger.info(
+                f"[CLEANUP] Removed {stale_count} stale temporary directories from previous runs"
+            )
 
     def cleanup_temp(self):
         """Clean up temporary directory completely"""

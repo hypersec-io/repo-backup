@@ -22,13 +22,15 @@ import configparser
 import fnmatch
 import json
 import os
+import queue
 import re
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import boto3
 import yaml
@@ -746,6 +748,8 @@ class RepoBackupOrchestrator:
                 method=os.getenv("BACKUP_METHOD", "direct"),
                 work_dir=self.work_dir,
             )
+            # Clean up any stale temp directories from previous failed runs
+            self.local_backup.cleanup_stale_temps()
             logger.info(f"Local backup configured for path: {self.local_backup_path}")
 
     def setup_from_env(self):
@@ -973,10 +977,10 @@ class RepoBackupOrchestrator:
             logger.error(f"[ERROR] Error reading repository file {file_path}: {e}")
             return []
 
-    def get_all_repositories(self, platforms: List[str] = None) -> List[Repository]:
-        """Fetch repositories from specified platforms (or all if none specified)"""
-        all_repos = []
-
+    def iter_all_repositories(
+        self, platforms: List[str] = None
+    ) -> Iterator[Repository]:
+        """Yield repositories one at a time from all platforms to minimize memory usage."""
         # Filter managers by platform if specified
         managers_to_use = self.managers
         if platforms:
@@ -989,24 +993,25 @@ class RepoBackupOrchestrator:
                 logger.warning(
                     f"[WARN] No managers found for platforms: {', '.join(platforms)}"
                 )
-                return all_repos
+                return
 
         for platform, account_name, manager in managers_to_use:
             try:
                 logger.info(
                     f"[CONNECT] Connecting to {platform.upper()} ({account_name})..."
                 )
-                repos = manager.get_repositories()
-
-                if repos:
-                    logger.info(
-                        f"[OK] Found {len(repos)} corporate repositories on {platform.upper()} ({account_name})"
+                repo_count = 0
+                for repo in manager.get_repositories():
+                    repo_count += 1
+                    logger.debug(
+                        f"  - {repo.owner}/{repo.name} ({'private' if repo.is_private else 'public'})"
                     )
-                    for repo in repos:
-                        logger.debug(
-                            f"  - {repo.owner}/{repo.name} ({'private' if repo.is_private else 'public'})"
-                        )
-                    all_repos.extend(repos)
+                    yield repo
+
+                if repo_count > 0:
+                    logger.info(
+                        f"[OK] Found {repo_count} corporate repositories on {platform.upper()} ({account_name})"
+                    )
                 else:
                     logger.warning(
                         f"[WARN] No repositories found on {platform.upper()} ({account_name})"
@@ -1017,7 +1022,9 @@ class RepoBackupOrchestrator:
                     f"[ERROR] Failed to fetch repos from {platform.upper()} ({account_name}): {e}"
                 )
 
-        return all_repos
+    def get_all_repositories(self, platforms: List[str] = None) -> List[Repository]:
+        """Fetch repositories from specified platforms. For memory efficiency, use iter_all_repositories() instead."""
+        return list(self.iter_all_repositories(platforms))
 
     def get_test_repository(self, platforms: List[str] = None) -> List[Repository]:
         """Get the smallest non-empty repository for testing"""
@@ -1190,28 +1197,70 @@ class RepoBackupOrchestrator:
         )
 
         if parallel:
+            # Use bounded queue pattern to avoid memory issues with large repo lists
+            # Only submit max_workers * 2 tasks at a time instead of all at once
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(self.backup_repository, repo): repo
-                    for repo in repos
-                }
+                # Convert to list for progress tracking (only holds repo metadata, not data)
+                repo_list = list(repos) if not isinstance(repos, list) else repos
+                total_repos = len(repo_list)
 
-                with tqdm(total=len(repos), desc="Backing up", unit="repo") as pbar:
-                    for future in as_completed(futures):
-                        repo = futures[future]
+                with tqdm(total=total_repos, desc="Backing up", unit="repo") as pbar:
+                    # Use a bounded submission pattern
+                    futures = {}
+                    repo_iter = iter(repo_list)
+                    pending_count = 0
+                    max_pending = max_workers * 2  # Keep queue bounded
+
+                    # Initial submission of bounded number of tasks
+                    for _ in range(min(max_pending, total_repos)):
                         try:
-                            result = future.result()
-                            if result:
-                                successful += 1
-                            else:
+                            repo = next(repo_iter)
+                            future = executor.submit(self.backup_repository, repo)
+                            futures[future] = repo
+                            pending_count += 1
+                        except StopIteration:
+                            break
+
+                    # Process completions and submit new tasks
+                    while futures:
+                        # Wait for at least one to complete
+                        done_futures = []
+                        for future in list(futures.keys()):
+                            if future.done():
+                                done_futures.append(future)
+
+                        if not done_futures:
+                            # No futures done yet, wait a bit
+                            import time
+
+                            time.sleep(0.1)
+                            continue
+
+                        for future in done_futures:
+                            repo = futures.pop(future)
+                            try:
+                                result = future.result()
+                                if result:
+                                    successful += 1
+                                else:
+                                    failed += 1
+                            except Exception as e:
+                                logger.error(
+                                    f"[ERROR] Error backing up {repo.platform.upper()}: {repo.owner}/{repo.name} - {e}"
+                                )
                                 failed += 1
-                        except Exception as e:
-                            logger.error(
-                                f"[ERROR] Error backing up {repo.platform.upper()}: {repo.owner}/{repo.name} - {e}"
-                            )
-                            failed += 1
-                        pbar.update(1)
-                        pbar.set_postfix({"OK": successful, "FAIL": failed})
+                            pbar.update(1)
+                            pbar.set_postfix({"OK": successful, "FAIL": failed})
+
+                            # Submit a new task if there are more repos
+                            try:
+                                next_repo = next(repo_iter)
+                                new_future = executor.submit(
+                                    self.backup_repository, next_repo
+                                )
+                                futures[new_future] = next_repo
+                            except StopIteration:
+                                pass
         else:
             with tqdm(repos, desc="Backing up", unit="repo") as pbar:
                 for repo in pbar:
