@@ -169,26 +169,44 @@ class LocalBackup:
                 return True
 
             # Fetch LFS objects if LFS is used in the repository
+            # Check .gitattributes for LFS filter patterns (works on bare repos)
             lfs_check = subprocess.run(
-                ["git", "lfs", "ls-files"],
+                ["git", "--git-dir", str(repo_path), "show", "HEAD:.gitattributes"],
                 capture_output=True,
                 text=True,
-                cwd=str(repo_path),
             )
 
-            if lfs_check.returncode == 0 and lfs_check.stdout.strip():
-                self.logger.info(f"[LFS] Fetching LFS objects for {repo.name}...")
-                lfs_fetch = subprocess.run(
-                    ["git", "lfs", "fetch", "--all"],
+            has_lfs = False
+            if lfs_check.returncode == 0 and "filter=lfs" in lfs_check.stdout:
+                # Verify git-lfs is installed
+                lfs_installed = subprocess.run(
+                    ["git", "lfs", "version"],
                     capture_output=True,
                     text=True,
-                    cwd=str(repo_path),
+                )
+                if lfs_installed.returncode != 0:
+                    self.logger.error(
+                        f"[ERROR] Repository {repo.name} uses Git LFS but git-lfs is not installed. "
+                        "Please install git-lfs to backup this repository."
+                    )
+                    if repo_path.exists():
+                        shutil.rmtree(repo_path)
+                    return False
+
+                self.logger.info(f"[LFS] Fetching LFS objects for {repo.name}...")
+                lfs_fetch = subprocess.run(
+                    ["git", "--git-dir", str(repo_path), "lfs", "fetch", "--all"],
+                    capture_output=True,
+                    text=True,
                 )
                 if lfs_fetch.returncode != 0:
-                    self.logger.warning(
-                        f"[LFS] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
+                    self.logger.error(
+                        f"[ERROR] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
                     )
-                    # Continue anyway - bundle will still work without LFS objects
+                    if repo_path.exists():
+                        shutil.rmtree(repo_path)
+                    return False
+                has_lfs = True
 
             # Create git bundle
             self.logger.info(f"[BUNDLE] Creating bundle for {repo.name}...")
@@ -218,6 +236,24 @@ class LocalBackup:
             self.logger.info(
                 f"[SUCCESS] Backed up {repo.name} ({file_size / 1024 / 1024:.2f} MB) to {bundle_path}"
             )
+
+            # If repo has LFS, create separate archive of LFS objects
+            # Git bundles do NOT include LFS objects, so we must archive them separately
+            if has_lfs:
+                lfs_objects_path = repo_path / "lfs" / "objects"
+                if lfs_objects_path.exists():
+                    lfs_archive_path = (
+                        backup_dir / f"{repo.name}_{last_commit_date}_lfs.tar.gz"
+                    )
+                    self.logger.info(
+                        f"[LFS] Creating LFS objects archive for {repo.name}..."
+                    )
+                    with tarfile.open(lfs_archive_path, "w:gz") as tar:
+                        tar.add(lfs_objects_path, arcname="lfs/objects")
+                    lfs_size = lfs_archive_path.stat().st_size
+                    self.logger.info(
+                        f"[LFS] Created LFS archive ({lfs_size / 1024 / 1024:.2f} MB) at {lfs_archive_path}"
+                    )
 
             # Cleanup temp directory
             if repo_path.exists():
@@ -305,26 +341,42 @@ class LocalBackup:
                 return True
 
             # Fetch LFS objects if LFS is used in the repository
+            # Check .gitattributes for LFS filter patterns (works on bare repos)
             lfs_check = subprocess.run(
-                ["git", "lfs", "ls-files"],
+                ["git", "--git-dir", str(repo_path), "show", "HEAD:.gitattributes"],
                 capture_output=True,
                 text=True,
-                cwd=str(repo_path),
             )
 
-            if lfs_check.returncode == 0 and lfs_check.stdout.strip():
-                self.logger.info(f"[LFS] Fetching LFS objects for {repo.name}...")
-                lfs_fetch = subprocess.run(
-                    ["git", "lfs", "fetch", "--all"],
+            if lfs_check.returncode == 0 and "filter=lfs" in lfs_check.stdout:
+                # Verify git-lfs is installed
+                lfs_installed = subprocess.run(
+                    ["git", "lfs", "version"],
                     capture_output=True,
                     text=True,
-                    cwd=str(repo_path),
+                )
+                if lfs_installed.returncode != 0:
+                    self.logger.error(
+                        f"[ERROR] Repository {repo.name} uses Git LFS but git-lfs is not installed. "
+                        "Please install git-lfs to backup this repository."
+                    )
+                    if repo_path.exists():
+                        shutil.rmtree(repo_path)
+                    return False
+
+                self.logger.info(f"[LFS] Fetching LFS objects for {repo.name}...")
+                lfs_fetch = subprocess.run(
+                    ["git", "--git-dir", str(repo_path), "lfs", "fetch", "--all"],
+                    capture_output=True,
+                    text=True,
                 )
                 if lfs_fetch.returncode != 0:
-                    self.logger.warning(
-                        f"[LFS] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
+                    self.logger.error(
+                        f"[ERROR] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
                     )
-                    # Continue anyway - archive will still work without LFS objects
+                    if repo_path.exists():
+                        shutil.rmtree(repo_path)
+                    return False
 
             # Create tar.gz archive
             self.logger.info(f"[ARCHIVE] Creating archive for {repo.name}...")

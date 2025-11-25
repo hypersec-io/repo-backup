@@ -52,6 +52,12 @@ from .github_manager import GitHubManager
 from .gitlab_manager import GitLabManager
 from .local_backup import LocalBackup
 from .s3_uploader import S3Uploader
+from .token_discovery import (
+    get_aws_credentials,
+    get_bitbucket_credentials,
+    get_github_token,
+    get_gitlab_token,
+)
 
 # Load environment variables from .env file (override existing env vars)
 load_dotenv(override=True)
@@ -743,20 +749,48 @@ class RepoBackupOrchestrator:
             logger.info(f"Local backup configured for path: {self.local_backup_path}")
 
     def setup_from_env(self):
-        """Setup managers from environment variables"""
+        """Setup managers from environment variables with auto-discovery fallback"""
         # Setup S3 if bucket is configured
         bucket_name = os.getenv("AWS_S3_BUCKET")
         if bucket_name:
+            # Try env vars first, then auto-discover from ~/.aws/credentials
+            aws_key = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_profile = os.getenv("AWS_PROFILE")
+
+            if not aws_key or not aws_secret:
+                # Auto-discover from standard locations
+                discovered_key, discovered_secret, discovered_profile = (
+                    get_aws_credentials()
+                )
+                if discovered_key and discovered_secret:
+                    aws_key = aws_key or discovered_key
+                    aws_secret = aws_secret or discovered_secret
+                    logger.info("[TOKEN] Using auto-discovered AWS credentials")
+                elif discovered_profile and not aws_profile:
+                    aws_profile = discovered_profile
+                    logger.info(
+                        f"[TOKEN] Using auto-discovered AWS profile: {aws_profile}"
+                    )
+
             self.s3_uploader = S3Uploader(
                 bucket_name=bucket_name,
                 region=os.getenv("AWS_REGION", "us-west-2"),
+                aws_access_key_id=aws_key,
+                aws_secret_access_key=aws_secret,
+                aws_profile=aws_profile,
                 prefix=os.getenv("S3_PREFIX", "repos"),
                 work_dir=self.work_dir,
             )
             logger.info(f"S3 uploader configured for bucket: {bucket_name}")
 
-        # Setup GitHub
+        # Setup GitHub - try env var first, then auto-discover from gh CLI
         github_token = os.getenv("GITHUB_TOKEN")
+        if not github_token or github_token.startswith("ghp_your"):
+            github_token = get_github_token()
+            if github_token:
+                logger.info("[TOKEN] Using auto-discovered GitHub token from gh CLI")
+
         if github_token and not github_token.startswith("ghp_your"):
             try:
                 manager = GitHubManager(
@@ -765,40 +799,54 @@ class RepoBackupOrchestrator:
                     == "true",
                 )
                 self.managers.append(("github", "default", manager))
-                logger.info("GitHub manager initialized from environment")
+                logger.info("GitHub manager initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize GitHub: {e}")
 
-        # Setup GitLab
+        # Setup GitLab - try env var first, then auto-discover from glab CLI
+        gitlab_url = os.getenv("GITLAB_URL", "https://gitlab.com")
         gitlab_token = os.getenv("GITLAB_TOKEN")
+        if not gitlab_token or gitlab_token.startswith("glpat_your"):
+            gitlab_token = get_gitlab_token(gitlab_url)
+            if gitlab_token:
+                logger.info(
+                    "[TOKEN] Using auto-discovered GitLab token from glab CLI config"
+                )
+
         if gitlab_token and not gitlab_token.startswith("glpat_your"):
             try:
                 manager = GitLabManager(
-                    url=os.getenv("GITLAB_URL", "https://gitlab.com"),
+                    url=gitlab_url,
                     token=gitlab_token,
                     exclude_personal=os.getenv("EXCLUDE_PERSONAL", "true").lower()
                     == "true",
                 )
                 self.managers.append(("gitlab", "default", manager))
-                logger.info("GitLab manager initialized from environment")
+                logger.info("GitLab manager initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize GitLab: {e}")
 
-        # Setup Bitbucket
+        # Setup Bitbucket - try env var first, then auto-discover from .netrc
         bitbucket_token = os.getenv("BITBUCKET_TOKEN")
+        bitbucket_username = os.getenv("BITBUCKET_USERNAME")
+        if not bitbucket_token or bitbucket_token.startswith("your_token_here"):
+            discovered_token, discovered_username = get_bitbucket_credentials()
+            if discovered_token:
+                bitbucket_token = discovered_token
+                bitbucket_username = bitbucket_username or discovered_username
+                logger.info("[TOKEN] Using auto-discovered Bitbucket credentials")
+
         if bitbucket_token and not bitbucket_token.startswith("your_token_here"):
             try:
                 manager = BitbucketManager(
                     url=os.getenv("BITBUCKET_URL", "https://bitbucket.org"),
                     token=bitbucket_token,
-                    username=os.getenv(
-                        "BITBUCKET_USERNAME"
-                    ),  # Optional for app passwords
+                    username=bitbucket_username,
                     exclude_personal=os.getenv("EXCLUDE_PERSONAL", "true").lower()
                     == "true",
                 )
                 self.managers.append(("bitbucket", "default", manager))
-                logger.info("Bitbucket manager initialized from environment")
+                logger.info("Bitbucket manager initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize Bitbucket: {e}")
 
@@ -1697,10 +1745,14 @@ def main():
                 logger.error("S3 setup requires --profile (admin profile)")
                 sys.exit(1)
         else:
-            # Regular S3 mode - profile can come from env
-            if not args.profile and not get_env_default("AWS_PROFILE"):
+            # Regular S3 mode - need either profile or access keys
+            has_profile = args.profile or get_env_default("AWS_PROFILE")
+            has_access_keys = get_env_default("AWS_ACCESS_KEY_ID") and get_env_default(
+                "AWS_SECRET_ACCESS_KEY"
+            )
+            if not has_profile and not has_access_keys:
                 logger.error(
-                    "S3 mode requires --profile or AWS_PROFILE environment variable"
+                    "S3 mode requires either AWS_PROFILE or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY"
                 )
                 sys.exit(1)
 

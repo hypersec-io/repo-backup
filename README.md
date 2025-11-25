@@ -27,16 +27,31 @@ We built this tool because we needed a reliable way to backup all our repositori
 
 ## Getting Started
 
-### Quick Installation
+### Installation
 
-If you just want to use the tool system-wide:
+Install with uv (recommended - isolated environment):
 
 ```bash
-# Download and install
-sudo python3 install.py
+# Install uv first if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install repo-backup system-wide (isolated venv)
+uv tool install git+https://gitlab.com/hypersec-repo/repo-backup
+
+# Or from PyPI (when published)
+# uv tool install repo-backup
 
 # Check it worked
 repo-backup --help
+```
+
+This installs `repo-backup` in its own isolated virtual environment with the executable available on your PATH.
+
+Or run without installing:
+
+```bash
+# One-off execution
+uvx --from git+https://gitlab.com/hypersec-repo/repo-backup repo-backup --help
 ```
 
 ### Developer Setup
@@ -45,12 +60,28 @@ If you're planning to contribute or modify the code:
 
 ```bash
 # Get the code
-git clone https://github.com/hypersec-io/repo-backup.git
+git clone https://gitlab.com/hypersec-repo/repo-backup.git
 cd repo-backup
 uv sync
 
 # Try it out
 uv run repo-backup local /tmp/test-backup --test
+```
+
+### Upgrading
+
+```bash
+# Upgrade to latest version
+uv tool upgrade repo-backup
+
+# Or upgrade all tools
+uv tool upgrade --all
+```
+
+### Uninstalling
+
+```bash
+uv tool uninstall repo-backup
 ```
 
 ## Setting Things Up
@@ -119,6 +150,17 @@ AWS_REGION=us-west-2
 PARALLEL_WORKERS=5
 BACKUP_METHOD=direct
 ```
+
+### Auto-Discovery of Tokens
+
+The tool can automatically discover tokens from standard CLI tool configurations if they're not set in `.env`:
+
+- **GitHub**: Reads from `gh` CLI (`gh auth token`) or `GH_TOKEN`/`GITHUB_TOKEN` env vars
+- **GitLab**: Reads from `glab` CLI config (`~/.config/glab-cli/config.yml`) or `GITLAB_TOKEN` env var
+- **Bitbucket**: Reads from `~/.netrc` file or `BITBUCKET_TOKEN` env var
+- **AWS**: Reads from `~/.aws/credentials` file or standard AWS env vars
+
+This means if you're already authenticated with `gh`, `glab`, or have AWS credentials configured, the tool will use them automatically.
 
 ### Getting Your Access Tokens
 
@@ -269,18 +311,27 @@ repo-backup --validate-config
 
 ## Backup File Formats
 
-### Git Bundles (Recommended)
+### Git Bundles (Default)
 
 These are like portable git repositories:
 - Path: `repos/{platform}/{owner}/{repo_name}_{timestamp}.bundle`
 - Contains complete history and all branches
 - Restore with: `git clone repo.bundle restored-repo`
 
+### Git LFS Support
+
+For repositories using Git LFS, the tool creates an additional archive:
+
+- Bundle: `repos/{platform}/{owner}/{repo_name}_{timestamp}.bundle` (git history)
+- LFS: `repos/{platform}/{owner}/{repo_name}_{timestamp}_lfs.tar.gz` (large files)
+
+Both files are needed for a complete restore of LFS repositories.
+
 ### Tar Archives
 
-Traditional compressed archives:
+Traditional compressed archives (use `--backup-method archive`):
 - Path: `repos/{platform}/{owner}/{repo_name}_{timestamp}.tar.gz`
-- Contains the bare git repository
+- Contains the bare git repository including LFS objects
 - Restore with: `tar -xzf repo.tar.gz`
 
 ## Restoring Your Backups
@@ -288,6 +339,7 @@ Traditional compressed archives:
 ### From a Git Bundle
 
 The easy way:
+
 ```bash
 # Get the bundle from S3
 aws s3 cp s3://your-bucket/repos/github/org/repo.bundle repo.bundle
@@ -303,6 +355,30 @@ git remote set-url origin https://github.com/org/repo.git
 git log --oneline -5
 git branch -a
 git tag -l
+```
+
+### From a Git Bundle with LFS
+
+For repositories that use Git LFS:
+
+```bash
+# Get both files from S3
+aws s3 cp s3://your-bucket/repos/github/org/repo.bundle repo.bundle
+aws s3 cp s3://your-bucket/repos/github/org/repo_lfs.tar.gz repo_lfs.tar.gz
+
+# Clone the bundle
+git clone repo.bundle restored-repo
+cd restored-repo
+
+# Restore LFS objects
+mkdir -p .git/lfs
+tar -xzf ../repo_lfs.tar.gz -C .git/lfs/
+
+# Checkout LFS files (no network needed)
+git lfs checkout
+
+# Verify LFS files are restored
+git lfs ls-files
 ```
 
 ### From an Archive

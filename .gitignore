@@ -77,10 +77,15 @@ test*.py
 .DS_Store
 Thumbs.db
 
-# Credentials (extra safety)
-*token*
-*secret*
-*password*
-*key*
+# Credentials (extra safety - file patterns with actual secrets)
+*.token
+*.secret
+*.password
+*_token.txt
+*_secret.txt
+*_password.txt
+credentials.json
+secrets.json
 *.pem
 *.key
+!*.key.example

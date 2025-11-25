@@ -39,6 +39,7 @@ class S3Uploader:
         region: str = "us-east-1",
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
+        aws_profile: Optional[str] = None,
         prefix: str = "repos",
         work_dir: Optional[str] = None,
     ):
@@ -47,14 +48,58 @@ class S3Uploader:
         self.logger = logging.getLogger(self.__class__.__name__)
 
         session_kwargs = {"region_name": region}
+        # Explicit access keys take precedence over profile
         if aws_access_key_id and aws_secret_access_key:
             session_kwargs["aws_access_key_id"] = aws_access_key_id
             session_kwargs["aws_secret_access_key"] = aws_secret_access_key
+        elif aws_profile:
+            session_kwargs["profile_name"] = aws_profile
 
         session = boto3.Session(**session_kwargs)
         self.s3_client = session.client("s3")
         self.s3_resource = session.resource("s3")
         self.bucket = self.s3_resource.Bucket(bucket_name)
+
+        # Verify credentials are valid by making a simple API call
+        try:
+            self.s3_client.head_bucket(Bucket=bucket_name)
+        except Exception as e:
+            error_msg = str(e)
+            if "ExpiredToken" in error_msg or "InvalidToken" in error_msg:
+                if aws_profile:
+                    self.logger.error(
+                        f"[ERROR] AWS SSO session expired for profile '{aws_profile}'. "
+                        f"Please run: aws sso login --profile {aws_profile}"
+                    )
+                    raise RuntimeError(
+                        f"AWS SSO session expired. Run: aws sso login --profile {aws_profile}"
+                    ) from e
+                else:
+                    self.logger.error("[ERROR] AWS credentials have expired.")
+                    raise
+            elif (
+                "NoCredentialsError" in error_msg
+                or "Unable to locate credentials" in error_msg
+            ):
+                if aws_profile:
+                    self.logger.error(
+                        f"[ERROR] No valid credentials for profile '{aws_profile}'. "
+                        f"Please run: aws sso login --profile {aws_profile}"
+                    )
+                else:
+                    self.logger.error(
+                        "[ERROR] No AWS credentials found. Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY "
+                        "or AWS_PROFILE in your .env file."
+                    )
+                raise
+            elif "AccessDenied" in error_msg or "403" in error_msg:
+                self.logger.error(
+                    f"[ERROR] Access denied to bucket '{bucket_name}'. "
+                    "Check your IAM permissions."
+                )
+                raise
+            else:
+                raise
 
         # Create temp directory for operations
         if work_dir:
@@ -134,6 +179,7 @@ class S3Uploader:
             print(f"[S3_UPLOADER] Point 1: Setting up paths")
             repo_path = os.path.join(self.temp_dir, f"{repo.name}_clone")
             bundle_path = os.path.join(self.temp_dir, f"{repo.name}.bundle")
+            lfs_archive_path = os.path.join(self.temp_dir, f"{repo.name}_lfs.tar.gz")
             print(
                 f"[S3_UPLOADER] Point 2: repo_path={repo_path}, bundle_path={bundle_path}"
             )
@@ -172,13 +218,30 @@ class S3Uploader:
                 return False
 
             # Fetch LFS objects if LFS is used in the repository
+            # Check .gitattributes for LFS filter patterns (works on bare repos)
             lfs_check = subprocess.run(
-                ["git", "--git-dir", repo_path, "lfs", "ls-files"],
+                ["git", "--git-dir", repo_path, "show", "HEAD:.gitattributes"],
                 capture_output=True,
                 text=True,
             )
 
-            if lfs_check.returncode == 0 and lfs_check.stdout.strip():
+            has_lfs = False
+            if lfs_check.returncode == 0 and "filter=lfs" in lfs_check.stdout:
+                # Verify git-lfs is installed
+                lfs_installed = subprocess.run(
+                    ["git", "lfs", "version"],
+                    capture_output=True,
+                    text=True,
+                )
+                if lfs_installed.returncode != 0:
+                    self.logger.error(
+                        f"[ERROR] Repository {repo.name} uses Git LFS but git-lfs is not installed. "
+                        "Please install git-lfs to backup this repository."
+                    )
+                    if os.path.exists(repo_path):
+                        shutil.rmtree(repo_path)
+                    return False
+
                 self.logger.info(f"Fetching LFS objects for {repo.name}...")
                 lfs_fetch = subprocess.run(
                     ["git", "--git-dir", repo_path, "lfs", "fetch", "--all"],
@@ -186,10 +249,13 @@ class S3Uploader:
                     text=True,
                 )
                 if lfs_fetch.returncode != 0:
-                    self.logger.warning(
-                        f"LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
+                    self.logger.error(
+                        f"[ERROR] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
                     )
-                    # Continue anyway - bundle will still work without LFS objects
+                    if os.path.exists(repo_path):
+                        shutil.rmtree(repo_path)
+                    return False
+                has_lfs = True
 
             self.logger.debug(
                 f"Clone command completed - checking repository path exists: {os.path.exists(repo_path)}"
@@ -372,6 +438,63 @@ class S3Uploader:
                 self.logger.error(f"[UPLOAD] S3 upload failed: {upload_error}")
                 raise upload_error
 
+            # If repo has LFS, create and upload separate archive of LFS objects
+            # Git bundles do NOT include LFS objects, so we must archive them separately
+            if has_lfs:
+                lfs_objects_path = os.path.join(repo_path, "lfs", "objects")
+                if os.path.exists(lfs_objects_path):
+                    self.logger.info(
+                        f"[LFS] Creating LFS objects archive for {repo.name}..."
+                    )
+                    with tarfile.open(lfs_archive_path, "w:gz") as tar:
+                        tar.add(lfs_objects_path, arcname="lfs/objects")
+
+                    lfs_size = os.path.getsize(lfs_archive_path)
+                    lfs_s3_key = f"{self.prefix}/{repo.platform}/{repo.owner}/{repo.name}_{last_commit_date}_lfs.tar.gz"
+
+                    self.logger.info(
+                        f"[LFS] Uploading LFS archive to S3 ({lfs_size / 1024 / 1024:.2f} MB)..."
+                    )
+
+                    try:
+                        with tqdm(
+                            total=lfs_size,
+                            unit="B",
+                            unit_scale=True,
+                            desc=f"{repo.name} LFS",
+                        ) as pbar:
+
+                            def lfs_upload_callback(bytes_transferred):
+                                pbar.update(bytes_transferred)
+
+                            self.s3_client.upload_file(
+                                lfs_archive_path,
+                                self.bucket_name,
+                                lfs_s3_key,
+                                Callback=lfs_upload_callback,
+                                ExtraArgs={
+                                    "ServerSideEncryption": "AES256",
+                                    "Metadata": {
+                                        "platform": repo.platform,
+                                        "owner": repo.owner,
+                                        "type": "lfs-objects",
+                                    },
+                                },
+                            )
+
+                        self.logger.info(
+                            f"[LFS] Successfully uploaded LFS archive to s3://{self.bucket_name}/{lfs_s3_key}"
+                        )
+                    except Exception as lfs_upload_error:
+                        self.logger.error(
+                            f"[LFS] LFS archive upload failed: {lfs_upload_error}"
+                        )
+                        # Continue - bundle was already uploaded
+
+                    # Cleanup LFS archive
+                    if os.path.exists(lfs_archive_path):
+                        os.remove(lfs_archive_path)
+
             # Cleanup
             if os.path.exists(repo_path):
                 shutil.rmtree(repo_path)
@@ -401,6 +524,44 @@ class S3Uploader:
             if result.returncode != 0:
                 self.logger.error(f"Clone failed: {result.stderr}")
                 return False
+
+            # Fetch LFS objects if LFS is used in the repository
+            # Check .gitattributes for LFS filter patterns (works on bare repos)
+            lfs_check = subprocess.run(
+                ["git", "--git-dir", repo_path, "show", "HEAD:.gitattributes"],
+                capture_output=True,
+                text=True,
+            )
+
+            if lfs_check.returncode == 0 and "filter=lfs" in lfs_check.stdout:
+                # Verify git-lfs is installed
+                lfs_installed = subprocess.run(
+                    ["git", "lfs", "version"],
+                    capture_output=True,
+                    text=True,
+                )
+                if lfs_installed.returncode != 0:
+                    self.logger.error(
+                        f"[ERROR] Repository {repo.name} uses Git LFS but git-lfs is not installed. "
+                        "Please install git-lfs to backup this repository."
+                    )
+                    if os.path.exists(repo_path):
+                        shutil.rmtree(repo_path)
+                    return False
+
+                self.logger.info(f"Fetching LFS objects for {repo.name}...")
+                lfs_fetch = subprocess.run(
+                    ["git", "--git-dir", repo_path, "lfs", "fetch", "--all"],
+                    capture_output=True,
+                    text=True,
+                )
+                if lfs_fetch.returncode != 0:
+                    self.logger.error(
+                        f"[ERROR] LFS fetch failed for {repo.name}: {lfs_fetch.stderr}"
+                    )
+                    if os.path.exists(repo_path):
+                        shutil.rmtree(repo_path)
+                    return False
 
             # Create tar.gz archive
             self.logger.info(f"Archiving {repo.name}...")
