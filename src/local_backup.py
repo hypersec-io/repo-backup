@@ -59,7 +59,9 @@ def robust_rmtree(path: Path, logger: logging.Logger, max_retries: int = 3) -> b
                     f"[CLEANUP] Retry {attempt + 1}/{max_retries} removing {path}: {e}"
                 )
             else:
-                logger.warning(f"[CLEANUP] Failed to remove {path} after {max_retries} attempts: {e}")
+                logger.warning(
+                    f"[CLEANUP] Failed to remove {path} after {max_retries} attempts: {e}"
+                )
                 return False
     return False
 
@@ -324,7 +326,9 @@ class LocalBackup:
             if repo_path.exists():
                 try:
                     robust_rmtree(repo_path, self.logger)
-                    self.logger.debug(f"[CLEANUP] Removed failed temp directory: {repo_path}")
+                    self.logger.debug(
+                        f"[CLEANUP] Removed failed temp directory: {repo_path}"
+                    )
                 except Exception as cleanup_error:
                     self.logger.warning(
                         f"[CLEANUP] Failed to remove temp directory {repo_path}: {cleanup_error}"
@@ -484,7 +488,9 @@ class LocalBackup:
             if repo_path.exists():
                 try:
                     robust_rmtree(repo_path, self.logger)
-                    self.logger.debug(f"[CLEANUP] Removed failed temp directory: {repo_path}")
+                    self.logger.debug(
+                        f"[CLEANUP] Removed failed temp directory: {repo_path}"
+                    )
                 except Exception as cleanup_error:
                     self.logger.warning(
                         f"[CLEANUP] Failed to remove temp directory {repo_path}: {cleanup_error}"

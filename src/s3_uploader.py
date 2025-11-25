@@ -68,8 +68,8 @@ class S3Uploader:
             if "ExpiredToken" in error_msg or "InvalidToken" in error_msg:
                 if aws_profile:
                     self.logger.error(
-                        f"[ERROR] AWS SSO session expired for profile '{aws_profile}'. "
-                        f"Please run: aws sso login --profile {aws_profile}"
+                        "[ERROR] AWS SSO session expired for the configured profile. "
+                        "Please run: aws sso login --profile <your-profile>"
                     )
                     raise RuntimeError(
                         f"AWS SSO session expired. Run: aws sso login --profile {aws_profile}"
@@ -83,8 +83,8 @@ class S3Uploader:
             ):
                 if aws_profile:
                     self.logger.error(
-                        f"[ERROR] No valid credentials for profile '{aws_profile}'. "
-                        f"Please run: aws sso login --profile {aws_profile}"
+                        "[ERROR] No valid credentials for the configured profile. "
+                        "Please run: aws sso login --profile <your-profile>"
                     )
                 else:
                     self.logger.error(

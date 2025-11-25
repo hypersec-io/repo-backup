@@ -19,6 +19,7 @@ limitations under the License.
 import logging
 import os
 from typing import List
+from urllib.parse import urlparse
 
 import requests
 from atlassian import Bitbucket
@@ -47,7 +48,12 @@ class BitbucketManager(RepositoryManager):
         self.url = url
         self.token = token
         self.username = username  # Optional for legacy app passwords
-        self.is_cloud = "bitbucket.org" in url
+        # Use proper URL parsing to check if host is bitbucket.org (prevents URL substring attacks)
+        parsed_url = urlparse(url)
+        self.is_cloud = (
+            parsed_url.netloc == "bitbucket.org"
+            or parsed_url.netloc.endswith(".bitbucket.org")
+        )
 
         # Bitbucket Cloud authentication types (as of August 2025):
         # 1. App Passwords (legacy, being deprecated) - use Basic auth with username
