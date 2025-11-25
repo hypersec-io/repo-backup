@@ -90,3 +90,4 @@ secrets.json
 *.pem
 *.key
 !*.key.example
+.coverage
