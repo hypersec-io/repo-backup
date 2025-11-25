@@ -196,7 +196,9 @@ def get_aws_credentials(
     # Check for profile in environment
     env_profile = os.getenv("AWS_PROFILE")
     if env_profile:
-        logger.debug(f"[TOKEN] AWS profile '{env_profile}' found in AWS_PROFILE env var")
+        logger.debug(
+            f"[TOKEN] AWS profile '{env_profile}' found in AWS_PROFILE env var"
+        )
         return None, None, env_profile
 
     # Try credentials file

@@ -3,7 +3,7 @@ name = "repo-backup"
 version = "2.0.2"
 description = "Enterprise repository backup tool that syncs corporate Git repositories to local storage or AWS S3"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Derek", email = "noreply@hypersec.io"}
@@ -16,10 +16,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Version Control :: Git",
     "Topic :: System :: Archiving :: Backup",
@@ -49,6 +45,7 @@ dev = [
     "python-semantic-release>=10.0.0",
     "build>=1.0.0",
     "pip-audit>=2.6.0",
+    "ruff>=0.8.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.5.0"
@@ -139,3 +136,46 @@ token = { env = "GITHUB_CI_TOKEN" }
 [tool.semantic_release.publish]
 dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+    | \.venv
+    | dist
+    | build
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "A", "C4", "SIM", "ARG"]
+ignore = ["E501"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip_gitignore = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

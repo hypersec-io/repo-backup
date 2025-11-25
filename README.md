@@ -3,7 +3,7 @@
 A straightforward enterprise tool for backing up Git repositories from GitHub, GitLab, and Bitbucket
 
 [![semantic-release: conventional](https://img.shields.io/badge/semantic--release-conventional-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 We built this tool because we needed a reliable way to backup all our repositories across different platforms. It handles the heavy lifting of discovering repos, cloning them efficiently, and storing them either locally or in S3. Nothing fancy, just solid backup automation that works.
 
@@ -20,9 +20,9 @@ We built this tool because we needed a reliable way to backup all our repositori
 
 ## What You'll Need
 
-- Python 3.9 or newer
+- Python 3.11 or newer
 - Git installed on your system
-- Access tokens for the platforms you want to backup
+- Access tokens for the platforms you want to backup (or use auto-discovery from CLI tools)
 - AWS account with S3 (optional, for cloud backups)
 
 ## Getting Started
@@ -60,9 +60,14 @@ If you're planning to contribute or modify the code:
 
 ```bash
 # Get the code
-git clone https://gitlab.com/hypersec-repo/repo-backup.git
+git clone https://github.com/hypersec-io/repo-backup.git
 cd repo-backup
-uv sync
+
+# Install with dev and test dependencies
+uv sync --extra dev --extra test
+
+# Run the local CI checks
+./scripts/ci
 
 # Try it out
 uv run repo-backup local /tmp/test-backup --test
@@ -398,15 +403,14 @@ git clone repo.git restored-repo
 
 Add to your crontab (runs daily at 2 AM):
 ```bash
-0 2 * * * cd /path/to/repo-backup && uv run repo-backup s3 >> backup.log 2>&1
+0 2 * * * repo-backup s3 >> /var/log/repo-backup.log 2>&1
 ```
 
 ### Windows (using Task Scheduler)
 
 Create a batch file:
 ```batch
-cd C:\path\to\repo-backup
-uv run repo-backup s3
+repo-backup s3
 ```
 Then schedule it in Task Scheduler.
 
@@ -423,16 +427,14 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
+      - uses: astral-sh/setup-uv@v4
       - run: |
-          pip install -r requirements.txt
-          uv run repo-backup s3
+          uv tool install git+https://github.com/hypersec-io/repo-backup
+          repo-backup s3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          GITHUB_TOKEN: ${{ secrets.BACKUP_GITHUB_TOKEN }}
 ```
 
 ## Security Notes

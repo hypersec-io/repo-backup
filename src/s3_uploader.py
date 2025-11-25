@@ -121,9 +121,9 @@ class S3Uploader:
     def upload_repository(
         self, repo: Repository, method: str = "direct", local_backup_path: str = None
     ) -> bool:
-        print(f"[S3_UPLOADER] upload_repository called for {repo.name}")
         """
         Upload repository to S3
+
         Args:
             repo: Repository object
             method: 'direct' for streaming or 'archive' for tar.gz
@@ -172,41 +172,29 @@ class S3Uploader:
 
     def _direct_upload(self, repo: Repository) -> bool:
         """Stream repository directly to S3 using git bundle"""
-        print(f"[S3_UPLOADER] _direct_upload called for {repo.name}")
-        print(f"[S3_UPLOADER] repo.platform={repo.platform}, repo.owner={repo.owner}")
         try:
             self.logger.info(f"[DIRECT_UPLOAD] Starting direct upload for {repo.name}")
-            print(f"[S3_UPLOADER] Point 1: Setting up paths")
             repo_path = os.path.join(self.temp_dir, f"{repo.name}_clone")
             bundle_path = os.path.join(self.temp_dir, f"{repo.name}.bundle")
             lfs_archive_path = os.path.join(self.temp_dir, f"{repo.name}_lfs.tar.gz")
-            print(
-                f"[S3_UPLOADER] Point 2: repo_path={repo_path}, bundle_path={bundle_path}"
-            )
 
             # For subprocess call, use relative paths since cwd will be set to temp_dir
             relative_repo_path = f"{repo.name}_clone"
 
-            # Clone with minimal depth first
-            print(f"[S3_UPLOADER] Point 3: About to clone")
+            # Clone repository
             self.logger.info(f"Cloning {repo.name}...")
             self.logger.debug(f"Repository path: {repo_path}")
             self.logger.debug(f"Bundle path: {bundle_path}")
             self.logger.debug(f"Temp directory: {self.temp_dir}")
             self.logger.debug(f"Working directory: {os.getcwd()}")
-            print(f"[S3_UPLOADER] Point 4: After logging debug info")
 
             clone_cmd = ["git", "clone", "--mirror", repo.clone_url, relative_repo_path]
             self.logger.debug(
                 f"Clone command: git clone --mirror [REDACTED_URL] {relative_repo_path}"
             )
-            print(f"[S3_UPLOADER] Point 5: About to run git clone")
 
             result = subprocess.run(
                 clone_cmd, capture_output=True, text=True, cwd=self.temp_dir
-            )
-            print(
-                f"[S3_UPLOADER] Point 6: Git clone completed with return code: {result.returncode}"
             )
 
             if result.returncode != 0:
@@ -274,7 +262,6 @@ class S3Uploader:
                 )
 
             # Get the last commit date from the repository (bare repo needs --git-dir)
-            print(f"[S3_UPLOADER] Point 7: Getting last commit date")
             # For bare repositories, we need to use --git-dir or run from within the repo
             last_commit_cmd = [
                 "git",
@@ -289,9 +276,6 @@ class S3Uploader:
             last_commit_result = subprocess.run(
                 last_commit_cmd, capture_output=True, text=True
             )
-            print(
-                f"[S3_UPLOADER] Point 8: Last commit result: returncode={last_commit_result.returncode}, stdout='{last_commit_result.stdout.strip()}'"
-            )
 
             if last_commit_result.returncode != 0:
                 # Check if it's an empty repository (also use --git-dir for bare repo)
@@ -301,9 +285,6 @@ class S3Uploader:
                     text=True,
                 )
                 if check_empty.returncode != 0 or not check_empty.stdout.strip():
-                    print(
-                        f"[S3_UPLOADER] CRITICAL: Treating repo as empty! returncode={check_empty.returncode}, stdout='{check_empty.stdout.strip()}'"
-                    )
                     self.logger.info(
                         f"[SKIP] Skipping {repo.name} - repository is empty (no commits)"
                     )
@@ -322,7 +303,6 @@ class S3Uploader:
             # Check if this version already exists in S3
             s3_key = f"{self.prefix}/{repo.platform}/{repo.owner}/{repo.name}_{last_commit_date}.bundle"
             self.logger.debug(f"Checking if S3 key already exists: {s3_key}")
-            print(f"[S3_UPLOADER] Checking S3 key: {s3_key}")
 
             try:
                 # Check if object exists in S3
@@ -330,7 +310,6 @@ class S3Uploader:
                     Bucket=self.bucket_name, Key=s3_key
                 )
                 file_size = response.get("ContentLength", 0)
-                print(f"[S3_UPLOADER] File already exists in S3! Size: {file_size}")
                 self.logger.info(
                     f"[SKIP] Backup already exists in S3 for {repo.name} with commit date {last_commit_date}: "
                     f"{s3_key} ({file_size / 1024 / 1024:.2f} MB)"

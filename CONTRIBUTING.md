@@ -26,10 +26,13 @@ Get your development environment running in just a few steps:
 git clone https://github.com/hypersec-io/repo-backup.git
 cd repo-backup
 
-# Install the development tools
+# Install with dev and test dependencies
 uv sync --extra dev --extra test
 
-# Make sure everything's working
+# Run the local CI checks (format, lint, security, tests, build)
+./scripts/ci
+
+# Or just run the tests
 uv run pytest tests/ -v
 ```
 
@@ -39,7 +42,7 @@ That's it! You're ready to start contributing.
 
 ### What You'll Need
 
-- Python 3.9 or newer (we test on 3.9, 3.10, and 3.11)
+- Python 3.11 or newer
 - Git (obviously!)
 - uv for dependency management
 - AWS CLI (if you're working on S3 features)
@@ -95,9 +98,10 @@ We try to keep things clean and consistent. Here's what we aim for:
 
 We follow PEP 8 with a few preferences:
 
-- Line length: 120 characters (because we're not on 80-column terminals anymore)
+- Line length: 88 characters (black default)
 - Use type hints when it makes the code clearer
 - Write docstrings that actually help future developers (including yourself)
+- Code is formatted with black, isort, and checked with ruff
 
 ### Code Philosophy
 
@@ -161,7 +165,7 @@ When adding new features:
 
 - Write tests that cover the main use cases
 - Test error conditions too
-- Mock external services (we don't want tests hitting real APIs)
+- Avoid mocks where possible - use real git repos and actual operations
 - Use descriptive test names that explain what's being tested
 
 Example:
@@ -176,9 +180,9 @@ def test_github_manager_handles_rate_limiting():
 
 ### Pull Request Process
 
-1. Fork the repo and create your branch from `main`
+1. Fork the repo and create your branch from `master`
 2. Make your changes
-3. Run the tests to make sure nothing broke
+3. Run `./scripts/ci` to ensure all checks pass
 4. Update documentation if needed
 5. Push your branch and open a PR
 
@@ -202,7 +206,7 @@ We use semantic-release to automate our versioning and releases. Here's how it w
 
 ### Automated Releases
 
-When changes are merged to `main`, our CI automatically:
+When changes are merged to `master`, our CI automatically:
 
 1. Analyzes commit messages to determine the version bump
 2. Updates the version number in all the right places

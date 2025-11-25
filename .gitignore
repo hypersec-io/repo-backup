@@ -69,9 +69,10 @@ logs/
 /var/tmp/repo-backup/
 tmp/
 
-# Test files
-test*.py
-*_test.py
+# Test files (exclude from root, but keep tests/ directory)
+/test*.py
+/*_test.py
+!tests/
 
 # OS
 .DS_Store

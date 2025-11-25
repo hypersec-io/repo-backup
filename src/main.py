@@ -963,7 +963,7 @@ class RepoBackupOrchestrator:
                     elif line.startswith("#"):
                         logger.debug(f"Skipping comment on line {line_num}: {line}")
 
-                logger.info(f"📄 Loaded {len(repos)} repositories from {file_path}")
+                logger.info(f"Loaded {len(repos)} repositories from {file_path}")
                 return repos
 
         except FileNotFoundError:

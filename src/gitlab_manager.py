@@ -68,7 +68,7 @@ class GitLabManager(RepositoryManager):
                         all=True, get_all=True, include_subgroups=True
                     )
                     self.logger.info(
-                        f"📦 Found {len(group_projects)} projects in group {group_path}"
+                        f"Found {len(group_projects)} projects in group {group_path}"
                     )
 
                     for project_ref in group_projects:
